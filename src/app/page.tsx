@@ -109,6 +109,7 @@ export default function Home() {
           <a className="sidebar-nav-link active" href="#question-sets"><span aria-hidden="true">▤</span>Question sets</a>
           <a className="sidebar-nav-link" href="#subjects"><span aria-hidden="true">◈</span>Subjects</a>
           <a className="sidebar-nav-link" href="#analytics"><span aria-hidden="true">▥</span>Analytics</a>
+          <a className="sidebar-nav-link" href="/questions/import"><span aria-hidden="true">↥</span>Import Questions</a>
         </div>
         <div className="sidebar-footer">Practice exam<br /><span>Content management</span></div>
       </nav>
