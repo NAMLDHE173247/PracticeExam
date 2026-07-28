@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "db:indexes": "tsx src/scripts/create-indexes.ts",
     "db:seed": "tsx src/scripts/seed-development.ts",
-    "db:audit:legacy": "tsx src/scripts/audit-legacy-question-sets.ts"
+    "db:audit:legacy": "tsx src/scripts/audit-legacy-question-sets.ts",
+    "db:audit:question-counts": "tsx src/scripts/audit-question-counts.ts",
+    "db:repair:question-counts": "tsx src/scripts/repair-question-counts.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",

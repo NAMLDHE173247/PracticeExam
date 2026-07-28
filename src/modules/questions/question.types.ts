@@ -34,6 +34,8 @@ export interface QuestionDocument {
   tags: string[];
   status: QuestionStatus;
   contentHash: string;
+  source?: { name?: string; externalId?: string };
+  translationStatus?: "original_only" | "translated" | "reviewed";
   createdAt: Date;
   updatedAt: Date;
 }

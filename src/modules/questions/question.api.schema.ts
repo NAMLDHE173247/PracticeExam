@@ -1,0 +1,6 @@
+import { z } from "zod";
+import { questionSchema } from "./question.schema";
+
+export const questionQuerySchema = z.object({ subjectId: z.string().optional(), examSetId: z.string().optional(), type: z.enum(["single_choice", "multiple_choice", "true_false_group"]).optional(), status: z.enum(["draft", "published", "archived"]).optional(), difficulty: z.enum(["easy", "medium", "hard"]).optional(), tag: z.string().trim().optional(), search: z.string().trim().optional(), translationStatus: z.enum(["original_only", "translated", "reviewed"]).optional(), sort: z.enum(["createdAt", "updatedAt", "difficulty"]).default("createdAt"), order: z.enum(["asc", "desc"]).default("desc") });
+export const createQuestionRequestSchema = z.object({ allowDuplicate: z.boolean().optional(), question: questionSchema.optional() }).passthrough();
+export const updateQuestionRequestSchema = z.object({ content: z.unknown().optional(), options: z.unknown().optional(), statements: z.unknown().optional(), explanation: z.unknown().optional(), difficulty: z.enum(["easy", "medium", "hard"]).optional(), tags: z.array(z.string()).optional(), source: z.unknown().optional(), translationStatus: z.enum(["original_only", "translated", "reviewed"]).optional(), status: z.enum(["draft", "published", "archived"]).optional(), examSetIds: z.array(z.string()).optional() }).strict();

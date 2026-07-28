@@ -25,6 +25,8 @@ const baseQuestionSchema = z.object({
   tags: tagsSchema.default([]),
   status: z.enum(["draft", "published", "archived"]).default("draft"),
   contentHash: z.string().trim().min(1),
+  source: z.object({ name: z.string().trim().min(1).optional(), externalId: z.string().trim().min(1).optional() }).optional(),
+  translationStatus: z.enum(["original_only", "translated", "reviewed"]).optional(),
 });
 
 const optionSchema = z.object({

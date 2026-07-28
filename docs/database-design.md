@@ -1,6 +1,6 @@
 # Database design — Phase 1
 
-Phase 1 only establishes the MongoDB data contract, validation and grading primitives. Frontend, history, statistics, wrong-question practice and the new API modules are intentionally deferred.
+Phase 1 established the MongoDB data contract, validation and grading primitives. Phase 2A adds backend management APIs for subjects, exam sets, questions and question relations. Frontend redesign, import, exam runtime, history, statistics and wrong-question practice remain deferred.
 
 ## Collections
 
@@ -42,5 +42,11 @@ Attempt start, autosave and submit may require transactions when implemented. A 
 
 ## Deferred phases
 
-- Phase 2: new subject, exam-set, question, import and admin APIs while retaining the legacy API.
+- Phase 2B: import, exam runtime, attempts and frontend migration.
 - Phase 3: attempt runtime, answer persistence, history, statistics, wrong-question practice and the `user_question_progress` decision/implementation.
+
+## Phase 2A API conventions
+
+New APIs return `{ success: true, data, meta? }` or `{ success: false, error: { code, message, details? } }`. MongoDB `ObjectId` values and `Date` values are serialized to strings. `/api/question-sets` is retained as a compatibility API and is not extended with new business logic.
+
+Subjects use soft delete (`isActive = false`). Exam sets and questions use archive status. Question creation computes `contentHash` on the server and rejects duplicates by subject unless `allowDuplicate` is explicitly true. Question-to-exam-set attach/remove operations are idempotent and maintain `questionCount`; `npm run db:audit:question-counts` is read-only and `npm run db:repair:question-counts` is manual.

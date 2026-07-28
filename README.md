@@ -1,5 +1,19 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Phase 2A APIs and database scripts
+
+New management APIs are available under `/api/subjects`, `/api/exam-sets` and `/api/questions`. The existing `/api/question-sets` endpoint remains a compatibility API for the current frontend.
+
+```bash
+npm run db:indexes
+npm run db:seed
+npm run db:audit:legacy
+npm run db:audit:question-counts
+npm run db:repair:question-counts
+```
+
+Multi-document transactions require MongoDB Atlas or a local replica set. Repair scripts are manual and never execute from GET handlers.
+
 ## Getting Started
 
 First, run the development server:
