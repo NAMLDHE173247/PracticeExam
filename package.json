@@ -14,8 +14,8 @@
     "db:seed": "tsx src/scripts/seed-development.ts",
     "db:audit:legacy": "tsx src/scripts/audit-legacy-question-sets.ts",
     "db:audit:question-counts": "tsx src/scripts/audit-question-counts.ts",
-    "db:repair:question-counts": "tsx src/scripts/repair-question-counts.ts"
-    ,"db:audit:import-jobs": "tsx src/scripts/audit-import-jobs.ts"
+    "db:repair:question-counts": "tsx src/scripts/repair-question-counts.ts",
+    "db:audit:import-jobs": "tsx src/scripts/audit-import-jobs.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
@@ -26,11 +26,13 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5",

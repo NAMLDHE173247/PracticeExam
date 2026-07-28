@@ -3,6 +3,7 @@ import type { JobResult, PreviewItem } from "@/lib/api/question-import-client";
 
 type Props = {
   job: JobResult;
+  focusKey: number;
   items: PreviewItem[];
   filter: string;
   isStale: boolean;
@@ -34,7 +35,7 @@ export function ImportPreview(props: Props) {
 
   useEffect(() => {
     headingRef.current?.focus();
-  }, []);
+  }, [props.focusKey]);
 
   return (
     <section className="import-preview-card">

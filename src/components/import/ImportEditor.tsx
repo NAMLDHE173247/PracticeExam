@@ -1,8 +1,64 @@
 import type { ImportFormat } from "@/lib/api/question-import-client";
 
-type Props = { format: ImportFormat; content: string; utf8Bytes: number; overLimit: boolean; isConfirming: boolean; isValidating: boolean; copyMessage: string; setFormat: (value: ImportFormat) => void; setContent: (value: string) => void; validate: () => void; copySample: (value: string) => void; insertSample: () => void; clearContent: () => void; jsonSample: string; structuredSample: string };
+type Props = {
+  format: ImportFormat;
+  content: string;
+  utf8Bytes: number;
+  overLimit: boolean;
+  isConfirming: boolean;
+  isValidating: boolean;
+  copyMessage: string;
+  setFormat: (value: ImportFormat) => void;
+  setContent: (value: string) => void;
+  validate: () => void;
+  copySample: (value: string) => void;
+  insertSample: () => void;
+  clearContent: () => void;
+  jsonSample: string;
+  structuredSample: string;
+};
 
 export function ImportEditor(props: Props) {
   const sample = props.format === "json" ? props.jsonSample : props.structuredSample;
-  return <section className="import-editor-card"><div className="import-section-heading"><div><p className="eyebrow">Step 2</p><h2>Input data</h2></div><div className="editor-actions"><button type="button" className="text-button" onClick={props.insertSample}>Insert {props.format === "json" ? "JSON" : "structured text"} sample</button><button type="button" className="text-button" onClick={() => void props.copySample(sample)}>Copy sample</button><button type="button" className="text-button" onClick={props.clearContent}>Clear</button><span className="copy-result" aria-live="polite">{props.copyMessage}</span></div></div><div className="editor-layout"><div><textarea aria-label="Import content" value={props.content} disabled={props.isConfirming} onChange={(event) => props.setContent(event.target.value)} placeholder={props.format === "json" ? "Paste a JSON array or { questions: [] } here..." : "Paste [QUESTION] blocks here..."} /><div className={`editor-meta ${props.overLimit ? "over-limit" : ""}`}><span>{props.utf8Bytes.toLocaleString()} bytes UTF-8 · {props.content.length.toLocaleString()} characters</span><span>Maximum 5 MB</span></div>{props.overLimit && <p className="field-error" role="alert">Content exceeds the 5 MB limit. Reduce the content before validating.</p>}</div><aside className="format-help"><h3>{props.format === "json" ? "JSON format" : "Structured text format"}</h3><pre>{sample}</pre>{props.format === "structured_text" && <p>Use 2–8 options. Multiple choice needs at least 2, but not all, correct answers. True/false accepts TRUE, FALSE, ĐÚNG, SAI, T or F.</p>}</aside></div><div className="import-actions"><button className="add-button" type="button" disabled={props.isValidating || props.isConfirming || props.overLimit || !props.content.trim()} onClick={props.validate}>{props.isValidating ? "Validating…" : "Validate and preview"}</button></div></section>;
+  const formatName = props.format === "json" ? "JSON" : "structured text";
+
+  return (
+    <section className="import-editor-card">
+      <div className="import-section-heading">
+        <div><p className="eyebrow">Step 2</p><h2>Input data</h2></div>
+        <div className="editor-actions">
+          <button type="button" className="text-button" onClick={props.insertSample}>Insert {formatName} sample</button>
+          <button type="button" className="text-button" onClick={() => void props.copySample(sample)}>Copy sample</button>
+          <button type="button" className="text-button" onClick={props.clearContent}>Clear</button>
+          <span className="copy-result" aria-live="polite">{props.copyMessage}</span>
+        </div>
+      </div>
+      <div className="editor-layout">
+        <div>
+          <textarea
+            aria-label="Import content"
+            value={props.content}
+            disabled={props.isConfirming}
+            onChange={(event) => props.setContent(event.target.value)}
+            placeholder={props.format === "json" ? "Paste a JSON array or { questions: [] } here..." : "Paste [QUESTION] blocks here..."}
+          />
+          <div className={`editor-meta ${props.overLimit ? "over-limit" : ""}`}>
+            <span>{props.utf8Bytes.toLocaleString()} bytes UTF-8 · {props.content.length.toLocaleString()} characters</span>
+            <span>Maximum 5 MB</span>
+          </div>
+          {props.overLimit && <p className="field-error" role="alert">Content exceeds the 5 MB limit. Reduce the content before validating.</p>}
+        </div>
+        <aside className="format-help">
+          <h3>{formatName} format</h3>
+          <pre>{sample}</pre>
+          {props.format === "structured_text" && <p>Use 2–8 options. Multiple choice needs at least 2, but not all, correct answers. True/false accepts TRUE, FALSE, ĐÚNG, SAI, T or F.</p>}
+        </aside>
+      </div>
+      <div className="import-actions">
+        <button className="add-button" type="button" disabled={props.isValidating || props.isConfirming || props.overLimit || !props.content.trim()} onClick={props.validate}>
+          {props.isValidating ? "Validating…" : "Validate and preview"}
+        </button>
+      </div>
+    </section>
+  );
 }

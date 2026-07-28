@@ -13,7 +13,7 @@ import { useQuestionImport } from "@/hooks/use-question-import";
 export default function ImportQuestionsPage() {
   const {
     subjects, examSets, subjectId, examSetIds, format, content, duplicatePolicy,
-    defaultStatus, defaultDifficulty, defaultTranslationStatus, job, filter,
+    defaultStatus, defaultDifficulty, defaultTranslationStatus, job, filter, previewFocusKey,
     filteredItems, isStale, utf8Bytes, overLimit, isLoadingSubjects,
     isLoadingExamSets, isValidating, isConfirming, isCancelling, loadError,
     actionError, restoreMessage, copyMessage, setSubject, setExamSetIds, changeFormat, setContent,
@@ -36,7 +36,7 @@ export default function ImportQuestionsPage() {
     {error && <section className="import-alert" role="alert" tabIndex={-1} ref={errorSummaryRef}><strong>{error.code ?? "IMPORT_ERROR"}</strong><span>{error.message}</span>{error.issues?.map((issue, index) => <span key={`${issue.code}-${index}`}>Question {issue.itemIndex !== undefined ? issue.itemIndex + 1 : "-"} · {issue.field ?? "general"} · {issue.code}: {issue.message}</span>)}</section>}
     <ImportConfiguration subjects={subjects} examSets={examSets} subjectId={subjectId} examSetIds={examSetIds} format={format} duplicatePolicy={duplicatePolicy} defaultStatus={defaultStatus} defaultDifficulty={defaultDifficulty} defaultTranslationStatus={defaultTranslationStatus} isLoadingSubjects={isLoadingSubjects} isLoadingExamSets={isLoadingExamSets} isConfirming={isConfirming} setSubject={setSubject} setExamSetIds={setExamSetIds} setFormat={changeFormat} setDuplicatePolicy={setDuplicatePolicy} setDefaultStatus={setDefaultStatus} setDefaultDifficulty={setDefaultDifficulty} setDefaultTranslationStatus={setDefaultTranslationStatus} />
     <ImportEditor format={format} content={content} utf8Bytes={utf8Bytes} overLimit={overLimit} isConfirming={isConfirming} isValidating={isValidating} copyMessage={copyMessage} setFormat={changeFormat} setContent={setContent} validate={() => void validate()} copySample={copySample} insertSample={insertSample} clearContent={clearContent} jsonSample={jsonSample} structuredSample={structuredSample} />
-    {job && <ImportPreview job={job} items={filteredItems} filter={filter} isStale={isStale} isConfirming={isConfirming} isCancelling={isCancelling} setFilter={setFilter} confirm={() => void confirm()} cancel={() => void cancel()} refresh={() => void refreshJob()} />}
+    {job && <ImportPreview job={job} focusKey={previewFocusKey} items={filteredItems} filter={filter} isStale={isStale} isConfirming={isConfirming} isCancelling={isCancelling} setFilter={setFilter} confirm={() => void confirm()} cancel={() => void cancel()} refresh={() => void refreshJob()} />}
     {job?.status === "completed" && !isStale && <ImportResult job={job} startNewImport={startNewImport} />}
     <p className="import-limit-note">Client limit: {(MAX_IMPORT_BYTES / (1024 * 1024)).toFixed(0)} MB UTF-8. Backend validation remains authoritative.</p>
   </main>;
