@@ -85,7 +85,7 @@ export class ExamAttemptService {
       if (sourceSets.some((set) => !set.subjectId.equals(subjectId))) throw new ApiError("INVALID_RELATION", "Bộ đề nguồn phải thuộc môn đã chọn.");
       if (sourceSets.some((set) => set.status !== "published")) throw new ApiError("EXAM_SET_NOT_PUBLISHED", "Tất cả bộ đề nguồn phải được publish.");
       durationMinutes = value.durationMinutes;
-      questions = await selectMixedQuestions(this.questions, sourceExamSetIds, value.questionCount, settings.shuffleQuestions);
+      questions = await selectMixedQuestions(this.questions, subjectId, sourceExamSetIds, value.questionCount, settings.shuffleQuestions);
     }
     if (questions.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "Không có câu hỏi hợp lệ.");
 
@@ -155,7 +155,11 @@ export class ExamAttemptService {
       const result = await runInTransaction(async (session) => this.completeSubmit(claimed, session, now));
       return serializeAttempt(result, await this.answers.findByAttempt(id), now);
     } catch (error) {
-      await this.attempts.updateOwned(id, userId, { $set: { status: "in_progress", updatedAt: new Date() } });
+      const rollback = await this.attempts.rollbackSubmitClaim(id, userId);
+      if (!rollback) {
+        const latest = await this.attempts.findById(id);
+        if (latest?.status === "submitting") console.error("Unable to rollback submitting attempt", id.toHexString());
+      }
       throw error;
     }
   }
@@ -168,7 +172,7 @@ export class ExamAttemptService {
       await this.answers.updateForAttempt(attempt._id, item.key.questionId, attempt.userId, { $set: { grading: { isCorrect: item.result.isCorrect, isPartiallyCorrect: item.result.isPartiallyCorrect, earnedScore: item.result.earnedScore, maxScore: item.result.maxScore, ...(item.key.correctOptionIds ? { correctOptionIds: item.key.correctOptionIds } : {}), ...(item.key.correctStatementAnswers ? { correctStatementAnswers: item.key.correctStatementAnswers } : {}) }, updatedAt: now } }, session);
     }
     const status = now >= attempt.deadlineAt ? "expired" : "submitted";
-    const updated = await this.attempts.update(attempt._id, { $set: { status, submitReason: status === "expired" ? "timeout" : "manual", submittedAt: now, score: scored.score, correctCount: scored.correctCount, incorrectCount: scored.incorrectCount, unansweredCount: scored.unansweredCount, partiallyCorrectCount: scored.partiallyCorrectCount, totalEarnedPoints: scored.totalEarnedPoints, totalMaxPoints: scored.totalMaxPoints, lastSavedAt: now, updatedAt: now } }, session);
+    const updated = await this.attempts.completeSubmittingAttempt(attempt._id, attempt.userId, { $set: { status, submitReason: status === "expired" ? "timeout" : "manual", submittedAt: now, score: scored.score, correctCount: scored.correctCount, incorrectCount: scored.incorrectCount, unansweredCount: scored.unansweredCount, partiallyCorrectCount: scored.partiallyCorrectCount, totalEarnedPoints: scored.totalEarnedPoints, totalMaxPoints: scored.totalMaxPoints, lastSavedAt: now, updatedAt: now } }, session);
     if (!updated) throw new ApiError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài.");
     return updated;
   }

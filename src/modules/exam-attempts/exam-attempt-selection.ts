@@ -21,19 +21,20 @@ export async function selectExamSetQuestions(
   shuffleQuestions: boolean,
   randomIndex?: RandomIndex,
 ): Promise<QuestionDocument[]> {
-  const items = await questions.find({ examSetIds: examSet._id, status: "published" }).sort({ createdAt: 1, _id: 1 }).toArray();
+  const items = await questions.find({ subjectId: examSet.subjectId, examSetIds: examSet._id, status: "published" }).sort({ createdAt: 1, _id: 1 }).toArray();
   if (items.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "Bộ đề chưa có câu hỏi hợp lệ.");
   return shuffleQuestions ? shuffle(items, randomIndex) : items;
 }
 
 export async function selectMixedQuestions(
   questions: Collection<QuestionDocument>,
+  subjectId: ExamSetDocument["subjectId"],
   sourceExamSetIds: ExamSetDocument["_id"][],
   questionCount: number,
   shuffleQuestions: boolean,
   randomIndex?: RandomIndex,
 ): Promise<QuestionDocument[]> {
-  const items = await questions.find({ examSetIds: { $in: sourceExamSetIds }, status: "published" }).sort({ createdAt: 1, _id: 1 }).toArray();
+  const items = await questions.find({ subjectId, examSetIds: { $in: sourceExamSetIds }, status: "published" }).sort({ createdAt: 1, _id: 1 }).toArray();
   const unique = [...new Map(items.map((item) => [item._id.toHexString(), item])).values()];
   if (questionCount > unique.length) throw new ApiError("INSUFFICIENT_QUESTIONS", "Số câu yêu cầu vượt quá số câu hợp lệ thực tế.");
   const selected = shuffleQuestions ? shuffle(unique, randomIndex) : unique;

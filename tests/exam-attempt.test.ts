@@ -41,7 +41,7 @@ describe("Phase 3A selection, snapshots and scoring", () => {
   it("deduplicates mixed questions before enforcing question count", async () => {
     const duplicate = { ...question, _id: new ObjectId(), examSetIds: [examSetId, new ObjectId()] };
     const collection = { find: vi.fn().mockReturnValue({ sort: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([question, duplicate, question]) }) }) };
-    const result = await selectMixedQuestions(collection as never, [examSetId], 2, false);
+    const result = await selectMixedQuestions(collection as never, subjectId, [examSetId], 2, false);
     expect(result).toHaveLength(2);
     expect(new Set(result.map((item) => item._id.toHexString())).size).toBe(2);
   });
@@ -152,27 +152,27 @@ describe("Phase 3A selection, snapshots and scoring", () => {
     const attempt = makeAttempt();
     const answer = { _id: new ObjectId(), attemptId: attempt._id, userId: attempt.userId, questionId, questionType: "multiple_choice" as const, selectedOptionIds: ["A", "B"], answeredAt: new Date(), updatedAt: new Date() };
     const claim = vi.fn().mockResolvedValue({ ...attempt, status: "submitting" as const });
-    const update = vi.fn().mockImplementation((_id, patch) => ({ ...attempt, ...patch.$set }));
+    const completeSubmittingAttempt = vi.fn().mockImplementation((_id, _userId, patch) => ({ ...attempt, ...patch.$set }));
     const findById = vi.fn().mockResolvedValue(attempt);
     const answers = { findByAttempt: vi.fn().mockResolvedValue([answer]), updateForAttempt: vi.fn() };
-    const service = new ExamAttemptService({ findById, claimForSubmit: claim, update } as never, answers as never, { findOne: vi.fn().mockResolvedValue({ _id: attempt.userId, isActive: true }) } as never, {} as never, {} as never, {} as never);
+    const service = new ExamAttemptService({ findById, claimForSubmit: claim, completeSubmittingAttempt } as never, answers as never, { findOne: vi.fn().mockResolvedValue({ _id: attempt.userId, isActive: true }) } as never, {} as never, {} as never, {} as never);
     const result = await service.submit(attempt._id, { userId: attempt.userId.toHexString() });
     expect(claim).toHaveBeenCalledOnce();
     expect(answers.updateForAttempt).toHaveBeenCalledOnce();
-    expect(update.mock.calls[0][1].$set.submitReason).toBe("manual");
+    expect(completeSubmittingAttempt.mock.calls[0][2].$set.submitReason).toBe("manual");
     expect(result).toMatchObject({ status: "submitted", score: 10 });
   });
 
   it("submits after the deadline as expired with timeout reason", async () => {
     const attempt = makeAttempt({ deadlineAt: new Date(Date.now() - 1000) });
-    const update = vi.fn().mockImplementation((_id, patch) => ({ ...attempt, ...patch.$set }));
+    const completeSubmittingAttempt = vi.fn().mockImplementation((_id, _userId, patch) => ({ ...attempt, ...patch.$set }));
     const service = new ExamAttemptService(
-      { findById: vi.fn().mockResolvedValue(attempt), claimForSubmit: vi.fn().mockResolvedValue({ ...attempt, status: "submitting" as const }), update } as never,
+      { findById: vi.fn().mockResolvedValue(attempt), claimForSubmit: vi.fn().mockResolvedValue({ ...attempt, status: "submitting" as const }), completeSubmittingAttempt } as never,
       { findByAttempt: vi.fn().mockResolvedValue([]), updateForAttempt: vi.fn() } as never,
       { findOne: vi.fn().mockResolvedValue({ _id: attempt.userId, isActive: true }) } as never, {} as never, {} as never, {} as never,
     );
     const result = await service.submit(attempt._id, { userId: attempt.userId.toHexString() });
-    expect(update.mock.calls[0][1].$set).toMatchObject({ status: "expired", submitReason: "timeout" });
+    expect(completeSubmittingAttempt.mock.calls[0][2].$set).toMatchObject({ status: "expired", submitReason: "timeout" });
     expect(result).toMatchObject({ status: "expired", score: 0 });
   });
 
@@ -180,8 +180,8 @@ describe("Phase 3A selection, snapshots and scoring", () => {
     const attempt = makeAttempt();
     const rollback = vi.fn();
     const answers = { findByAttempt: vi.fn().mockResolvedValue([{ _id: new ObjectId(), attemptId: attempt._id, userId: attempt.userId, questionId, questionType: "multiple_choice" as const, selectedOptionIds: ["A"], answeredAt: new Date(), updatedAt: new Date() }]), updateForAttempt: vi.fn().mockRejectedValue(new Error("grading failed")) };
-    const service = new ExamAttemptService({ findById: vi.fn().mockResolvedValue(attempt), claimForSubmit: vi.fn().mockResolvedValue({ ...attempt, status: "submitting" as const }), updateOwned: rollback } as never, answers as never, { findOne: vi.fn().mockResolvedValue({ _id: attempt.userId, isActive: true }) } as never, {} as never, {} as never, {} as never);
+    const service = new ExamAttemptService({ findById: vi.fn().mockResolvedValue(attempt), claimForSubmit: vi.fn().mockResolvedValue({ ...attempt, status: "submitting" as const }), rollbackSubmitClaim: rollback } as never, answers as never, { findOne: vi.fn().mockResolvedValue({ _id: attempt.userId, isActive: true }) } as never, {} as never, {} as never, {} as never);
     await expect(service.submit(attempt._id, { userId: attempt.userId.toHexString() })).rejects.toThrow("grading failed");
-    expect(rollback).toHaveBeenCalledWith(attempt._id, attempt.userId, expect.objectContaining({ $set: expect.objectContaining({ status: "in_progress" }) }));
+    expect(rollback).toHaveBeenCalledWith(attempt._id, attempt.userId);
   });
 });

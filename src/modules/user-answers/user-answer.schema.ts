@@ -10,6 +10,11 @@ export const updateUserAnswerSchema = z.object({
   selectedOptionIds: z.array(z.string().trim().min(1)).optional(),
   statementAnswers: statementAnswers.optional(),
   isFlagged: z.boolean().optional(),
-}).refine((value) => value.selectedOptionIds !== undefined || value.statementAnswers !== undefined || value.isFlagged !== undefined, "An answer or flag is required");
+}).refine((value) => value.selectedOptionIds !== undefined || value.statementAnswers !== undefined || value.isFlagged !== undefined, "An answer or flag is required")
+  .superRefine((value, context) => {
+    if (value.selectedOptionIds !== undefined && value.statementAnswers !== undefined) {
+      context.addIssue({ code: "custom", path: [], message: "Only one answer payload is allowed." });
+    }
+  });
 
 export type UpdateUserAnswerInput = z.infer<typeof updateUserAnswerSchema>;

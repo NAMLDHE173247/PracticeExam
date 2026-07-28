@@ -17,7 +17,7 @@ export const createExamAttemptSchema = z.discriminatedUnion("mode", [
     subjectId: objectId,
     sourceExamSetIds: z.array(objectId).min(1),
     questionCount: z.number().int().min(1).max(200),
-    durationMinutes: z.number().int().positive(),
+    durationMinutes: z.number().int().min(1).max(600),
     settings,
   }),
 ]);
