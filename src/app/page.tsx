@@ -102,12 +102,15 @@ export default function Home() {
 
   return (
     <div className="dashboard-shell">
-      <nav className="topbar" aria-label="Main navigation">
-        <div className="nav-links">
-          <a className="nav-link active" href="#question-sets">Question sets</a>
-          <a className="nav-link" href="#subjects">Subjects</a>
-          <a className="nav-link" href="#analytics">Analytics</a>
+      <nav className="app-sidebar" aria-label="Main navigation">
+        <div className="sidebar-brand"><span aria-hidden="true">Q</span><strong>Questionly</strong></div>
+        <p className="sidebar-section-label">Workspace</p>
+        <div className="sidebar-nav-links">
+          <a className="sidebar-nav-link active" href="#question-sets"><span aria-hidden="true">▤</span>Question sets</a>
+          <a className="sidebar-nav-link" href="#subjects"><span aria-hidden="true">◈</span>Subjects</a>
+          <a className="sidebar-nav-link" href="#analytics"><span aria-hidden="true">▥</span>Analytics</a>
         </div>
+        <div className="sidebar-footer">Practice exam<br /><span>Content management</span></div>
       </nav>
 
       <main className="dashboard-main" id="top">
