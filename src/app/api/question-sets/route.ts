@@ -6,13 +6,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function serializeExamSet(examSet: LegacyQuestionSetDocument) {
+  const updatedAt = examSet.updatedAt instanceof Date ? examSet.updatedAt.toISOString() : examSet.updatedAt ?? "";
   return {
     id: examSet._id?.toString() ?? "",
     subject: examSet.subject,
     title: examSet.title,
     questions: examSet.questions,
     status: examSet.status ?? "Draft",
-    updatedAt: examSet.updatedAt ?? "",
+    updatedAt,
     accent: examSet.accent ?? "blue",
   };
 }
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
       title,
       questions,
       status: "Draft",
-      updatedAt: "Just now",
+      updatedAt: new Date(),
       accent,
       createdAt: new Date(),
     };

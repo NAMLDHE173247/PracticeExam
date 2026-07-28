@@ -9,8 +9,10 @@ export interface UserAnswerDocument {
   questionType: QuestionType;
   selectedOptionIds?: string[];
   trueFalseAnswers?: Record<string, boolean>;
-  isCorrect?: boolean;
-  earnedScore?: number;
+  grading?: {
+    isCorrect: boolean;
+    earnedScore: number;
+  };
   answeredAt: Date;
   updatedAt: Date;
 }
