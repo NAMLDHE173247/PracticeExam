@@ -7,12 +7,17 @@ export interface UserAnswerDocument {
   userId: ObjectId;
   questionId: ObjectId;
   questionType: QuestionType;
+  isFlagged?: boolean;
   selectedOptionIds?: string[];
-  trueFalseAnswers?: Record<string, boolean>;
+  statementAnswers?: Array<{ statementId: string; answer: boolean }>;
   grading?: {
     isCorrect: boolean;
+    isPartiallyCorrect: boolean;
     earnedScore: number;
+    maxScore: number;
+    correctOptionIds?: string[];
+    correctStatementAnswers?: Array<{ statementId: string; answer: boolean }>;
   };
-  answeredAt: Date;
+  answeredAt?: Date;
   updatedAt: Date;
 }

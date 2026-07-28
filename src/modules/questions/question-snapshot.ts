@@ -9,8 +9,9 @@ export function createAttemptQuestionSnapshot(
     questionId: question._id,
     order,
     type: question.type,
-    content: question.content,
-    options: question.options?.map(({ id, label, content }) => ({ id, label, content })),
-    statements: question.statements?.map(({ id, content }) => ({ id, content })),
+    content: { ...question.content },
+    options: question.options?.map(({ id, label, content }) => ({ id, label, content: { ...content } })),
+    statements: question.statements?.map(({ id, content }) => ({ id, content: { ...content } })),
+    sourceExamSetIds: [...question.examSetIds],
   };
 }
