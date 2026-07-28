@@ -1,5 +1,5 @@
 export type Subject = { _id: string; code: string; name: string; isActive: boolean };
-export type ExamSet = { _id: string; title: string; subjectId: string; status: "draft" | "published" | "archived"; questionCount: number };
+export type ExamSet = { _id: string; title: string; subjectId: string; status: "draft" | "published" | "archived"; questionCount: number; durationMinutes?: number; passingScore?: number };
 export type ImportFormat = "json" | "structured_text";
 export type DuplicatePolicy = "reject" | "skip" | "allow";
 export type PreviewIssue = { itemIndex?: number; questionNumber?: number; field?: string; code: string; message: string; severity: "error" | "warning" };

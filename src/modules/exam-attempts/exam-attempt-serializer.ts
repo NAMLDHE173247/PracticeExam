@@ -14,6 +14,8 @@ export function serializeAttempt(attempt: ExamAttemptDocument, answers: UserAnsw
     status: attempt.status,
     startedAt: attempt.startedAt.toISOString(),
     deadlineAt: attempt.deadlineAt.toISOString(),
+    ...(attempt.submittedAt ? { submittedAt: attempt.submittedAt.toISOString() } : {}),
+    ...(attempt.submitReason ? { submitReason: attempt.submitReason } : {}),
     secondsRemaining,
     mustSubmit: secondsRemaining === 0 && attempt.status === "in_progress",
     settings: attempt.settings,
