@@ -13,6 +13,7 @@ export interface ExamAttemptQuestionSnapshot {
   options?: Array<{ id: string; label: string; content: LocalizedText }>;
   statements?: Array<{ id: string; content: LocalizedText }>;
   sourceExamSetIds: ObjectId[];
+  originExamSetId?: ObjectId;
 }
 
 export interface ExamAttemptAnswerKey {
@@ -20,6 +21,31 @@ export interface ExamAttemptAnswerKey {
   type: QuestionType;
   correctOptionIds?: string[];
   correctStatementAnswers?: Array<{ statementId: string; answer: boolean }>;
+  explanation?: LocalizedText;
+}
+
+export interface ExamResultQuestionSnapshot {
+  questionId: ObjectId;
+  order: number;
+  type: QuestionType;
+  content: LocalizedText;
+  options?: Array<{ id: string; label: string; content: LocalizedText }>;
+  statements?: Array<{ id: string; content: LocalizedText }>;
+  sourceExamSetIds: ObjectId[];
+  originExamSetId?: ObjectId;
+  userAnswer: {
+    selectedOptionIds?: string[];
+    statementAnswers?: Array<{ statementId: string; answer: boolean }>;
+    isFlagged: boolean;
+  };
+  result: {
+    status: "correct" | "partial" | "incorrect" | "unanswered";
+    earnedScore: number;
+    maxScore: number;
+    correctOptionIds?: string[];
+    correctStatementAnswers?: Array<{ statementId: string; answer: boolean }>;
+  };
+  explanation?: LocalizedText;
 }
 
 export interface ExamAttemptSettings {
@@ -55,6 +81,19 @@ export interface ExamAttemptDocument {
   totalEarnedPoints?: number;
   totalMaxPoints?: number;
   settings: ExamAttemptSettings;
+  resultSnapshot?: {
+    questions: ExamResultQuestionSnapshot[];
+    generatedAt: Date;
+    summary: {
+      score: number;
+      scoreScale: 10;
+      correctCount: number;
+      partiallyCorrectCount: number;
+      incorrectCount: number;
+      unansweredCount: number;
+      totalQuestions: number;
+    };
+  };
   createdAt: Date;
   updatedAt: Date;
 }

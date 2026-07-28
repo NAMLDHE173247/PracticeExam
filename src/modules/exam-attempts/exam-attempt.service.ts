@@ -89,7 +89,7 @@ export class ExamAttemptService {
     }
     if (questions.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "Không có câu hỏi hợp lệ.");
 
-    const questionSnapshots = questions.map((question, index) => createAttemptSnapshot(question, index, settings.shuffleOptions));
+    const questionSnapshots = questions.map((question, index) => createAttemptSnapshot(question, index, settings.shuffleOptions, undefined, sourceExamSetIds));
     const answerKeySnapshots = questions.map(createAnswerKeySnapshot);
     const startedAt = new Date();
     const deadlineAt = new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
@@ -172,7 +172,49 @@ export class ExamAttemptService {
       await this.answers.updateForAttempt(attempt._id, item.key.questionId, attempt.userId, { $set: { grading: { isCorrect: item.result.isCorrect, isPartiallyCorrect: item.result.isPartiallyCorrect, earnedScore: item.result.earnedScore, maxScore: item.result.maxScore, ...(item.key.correctOptionIds ? { correctOptionIds: item.key.correctOptionIds } : {}), ...(item.key.correctStatementAnswers ? { correctStatementAnswers: item.key.correctStatementAnswers } : {}) }, updatedAt: now } }, session);
     }
     const status = now >= attempt.deadlineAt ? "expired" : "submitted";
-    const updated = await this.attempts.completeSubmittingAttempt(attempt._id, attempt.userId, { $set: { status, submitReason: status === "expired" ? "timeout" : "manual", submittedAt: now, score: scored.score, correctCount: scored.correctCount, incorrectCount: scored.incorrectCount, unansweredCount: scored.unansweredCount, partiallyCorrectCount: scored.partiallyCorrectCount, totalEarnedPoints: scored.totalEarnedPoints, totalMaxPoints: scored.totalMaxPoints, lastSavedAt: now, updatedAt: now } }, session);
+    
+    const resultSnapshot: ExamAttemptDocument["resultSnapshot"] = {
+      generatedAt: now,
+      summary: {
+        score: scored.score,
+        scoreScale: 10,
+        correctCount: scored.correctCount,
+        partiallyCorrectCount: scored.partiallyCorrectCount,
+        incorrectCount: scored.incorrectCount,
+        unansweredCount: scored.unansweredCount,
+        totalQuestions: attempt.questionSnapshots.length,
+      },
+      questions: attempt.questionSnapshots.map(snapshot => {
+        const answerKey = attempt.answerKeySnapshots.find(key => key.questionId.equals(snapshot.questionId));
+        const answer = answers.find(a => a.questionId.equals(snapshot.questionId));
+        const grading = scored.gradings.find(g => g.key.questionId.equals(snapshot.questionId));
+        return {
+          questionId: snapshot.questionId,
+          order: snapshot.order,
+          type: snapshot.type,
+          content: snapshot.content,
+          options: snapshot.options,
+          statements: snapshot.statements,
+          sourceExamSetIds: snapshot.sourceExamSetIds,
+          originExamSetId: snapshot.originExamSetId,
+          userAnswer: {
+            selectedOptionIds: answer?.selectedOptionIds,
+            statementAnswers: answer?.statementAnswers,
+            isFlagged: answer?.isFlagged ?? false,
+          },
+          result: {
+            status: grading?.result.isCorrect ? "correct" : grading?.result.isPartiallyCorrect ? "partial" : (!answer?.selectedOptionIds?.length && !answer?.statementAnswers?.length) ? "unanswered" : "incorrect",
+            earnedScore: grading?.result.earnedScore ?? 0,
+            maxScore: grading?.result.maxScore ?? 1,
+            correctOptionIds: answerKey?.correctOptionIds,
+            correctStatementAnswers: answerKey?.correctStatementAnswers,
+          },
+          explanation: answerKey?.explanation,
+        };
+      }),
+    };
+
+    const updated = await this.attempts.completeSubmittingAttempt(attempt._id, attempt.userId, { $set: { status, submitReason: status === "expired" ? "timeout" : "manual", submittedAt: now, score: scored.score, correctCount: scored.correctCount, incorrectCount: scored.incorrectCount, unansweredCount: scored.unansweredCount, partiallyCorrectCount: scored.partiallyCorrectCount, totalEarnedPoints: scored.totalEarnedPoints, totalMaxPoints: scored.totalMaxPoints, lastSavedAt: now, updatedAt: now, resultSnapshot } }, session);
     if (!updated) throw new ApiError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài.");
     return updated;
   }
