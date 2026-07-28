@@ -185,9 +185,16 @@ export class ExamAttemptService {
         totalQuestions: attempt.questionSnapshots.length,
       },
       questions: attempt.questionSnapshots.map(snapshot => {
-        const answerKey = attempt.answerKeySnapshots.find(key => key.questionId.equals(snapshot.questionId));
+        const answerKeys = attempt.answerKeySnapshots.filter(key => key.questionId.equals(snapshot.questionId));
+        if (answerKeys.length !== 1) throw new Error(`Invariant failed: Expected exactly 1 answer key for question ${snapshot.questionId.toHexString()}, found ${answerKeys.length}`);
+        const answerKey = answerKeys[0];
+
+        const gradings = scored.gradings.filter(g => g.key.questionId.equals(snapshot.questionId));
+        if (gradings.length !== 1) throw new Error(`Invariant failed: Expected exactly 1 grading result for question ${snapshot.questionId.toHexString()}, found ${gradings.length}`);
+        const grading = gradings[0];
+
         const answer = answers.find(a => a.questionId.equals(snapshot.questionId));
-        const grading = scored.gradings.find(g => g.key.questionId.equals(snapshot.questionId));
+
         return {
           questionId: snapshot.questionId,
           order: snapshot.order,
@@ -203,16 +210,21 @@ export class ExamAttemptService {
             isFlagged: answer?.isFlagged ?? false,
           },
           result: {
-            status: grading?.result.isCorrect ? "correct" : grading?.result.isPartiallyCorrect ? "partial" : (!answer?.selectedOptionIds?.length && !answer?.statementAnswers?.length) ? "unanswered" : "incorrect",
-            earnedScore: grading?.result.earnedScore ?? 0,
-            maxScore: grading?.result.maxScore ?? 1,
-            correctOptionIds: answerKey?.correctOptionIds,
-            correctStatementAnswers: answerKey?.correctStatementAnswers,
+            status: grading.result.isCorrect ? "correct" : grading.result.isPartiallyCorrect ? "partial" : (!answer?.selectedOptionIds?.length && !answer?.statementAnswers?.length) ? "unanswered" : "incorrect",
+            earnedScore: grading.result.earnedScore,
+            maxScore: grading.result.maxScore,
+            correctOptionIds: answerKey.correctOptionIds,
+            correctStatementAnswers: answerKey.correctStatementAnswers,
           },
-          explanation: answerKey?.explanation,
+          explanation: answerKey.explanation,
         };
       }),
     };
+
+    const duplicateQuestionIds = resultSnapshot.questions.map(q => q.questionId.toHexString()).filter((item, index, array) => array.indexOf(item) !== index);
+    if (duplicateQuestionIds.length > 0) {
+      throw new Error(`Invariant failed: Duplicate question IDs in result snapshot: ${duplicateQuestionIds.join(", ")}`);
+    }
 
     const updated = await this.attempts.completeSubmittingAttempt(attempt._id, attempt.userId, { $set: { status, submitReason: status === "expired" ? "timeout" : "manual", submittedAt: now, score: scored.score, correctCount: scored.correctCount, incorrectCount: scored.incorrectCount, unansweredCount: scored.unansweredCount, partiallyCorrectCount: scored.partiallyCorrectCount, totalEarnedPoints: scored.totalEarnedPoints, totalMaxPoints: scored.totalMaxPoints, lastSavedAt: now, updatedAt: now, resultSnapshot } }, session);
     if (!updated) throw new ApiError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài.");

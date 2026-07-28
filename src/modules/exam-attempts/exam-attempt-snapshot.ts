@@ -6,10 +6,12 @@ import type { ObjectId } from "mongodb";
 
 export function createAttemptSnapshot(question: QuestionDocument, order: number, shuffleOptions: boolean, randomIndex?: RandomIndex, sourceExamSetIds?: ObjectId[]): ExamAttemptQuestionSnapshot {
   const options = question.options?.map(({ id, label, content }) => ({ id, label, content: { ...content } }));
-  let originExamSetId = question.examSetIds[0];
-  if (sourceExamSetIds && sourceExamSetIds.length > 0) {
-    const match = question.examSetIds.find(id => sourceExamSetIds.some(sourceId => sourceId.equals(id)));
-    if (match) originExamSetId = match;
+  if (!sourceExamSetIds || sourceExamSetIds.length === 0) {
+    throw new Error("sourceExamSetIds must be provided");
+  }
+  const filteredSourceExamSetIds = question.examSetIds.filter(id => sourceExamSetIds.some(sourceId => sourceId.equals(id)));
+  if (filteredSourceExamSetIds.length === 0) {
+    throw new Error(`Question ${question._id.toHexString()} does not belong to any provided source exam sets`);
   }
   return {
     questionId: question._id,
@@ -18,8 +20,8 @@ export function createAttemptSnapshot(question: QuestionDocument, order: number,
     content: { ...question.content },
     options: options && shuffleOptions ? shuffle(options, randomIndex) : options,
     statements: question.statements?.map(({ id, content }) => ({ id, content: { ...content } })),
-    sourceExamSetIds: [...question.examSetIds],
-    ...(originExamSetId ? { originExamSetId } : {}),
+    sourceExamSetIds: filteredSourceExamSetIds,
+    originExamSetId: filteredSourceExamSetIds[0],
   };
 }
 
