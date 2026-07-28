@@ -19,29 +19,36 @@ function gradeQuestion(attempt: ExamAttemptDocument, key: ExamAttemptAnswerKey, 
   return gradeTrueFalseGroup(statements, Object.fromEntries(answer?.statementAnswers?.map((item) => [item.statementId, item.answer]) ?? []), attempt.settings.scoringMode);
 }
 
-export function scoreAttempt(attempt: ExamAttemptDocument, answers: UserAnswerDocument[]) {
-  const questionIds = attempt.questionSnapshots.map(s => s.questionId.toHexString());
-  const answerKeyIds = attempt.answerKeySnapshots.map(k => k.questionId.toHexString());
-
-  if (questionIds.length !== answerKeyIds.length) {
-    throw new Error(`Invariant failed: questionSnapshots length (${questionIds.length}) does not match answerKeySnapshots length (${answerKeyIds.length})`);
+function assertUniqueIds(ids: string[], name: string) {
+  const unique = new Set(ids);
+  if (unique.size !== ids.length) {
+    throw new Error(`Invariant failed: Duplicate IDs found in ${name}`);
   }
+}
 
-  const uniqueQuestionIds = new Set(questionIds);
-  if (uniqueQuestionIds.size !== questionIds.length) {
-    throw new Error(`Invariant failed: Duplicate questionIds found in questionSnapshots`);
+function assertSameIdSet(setA: string[], setB: string[], nameA: string, nameB: string) {
+  if (setA.length !== setB.length) {
+    throw new Error(`Invariant failed: ${nameA} length (${setA.length}) does not match ${nameB} length (${setB.length})`);
   }
-
-  const uniqueAnswerKeyIds = new Set(answerKeyIds);
-  if (uniqueAnswerKeyIds.size !== answerKeyIds.length) {
-    throw new Error(`Invariant failed: Duplicate questionIds found in answerKeySnapshots`);
-  }
-
-  for (const id of uniqueQuestionIds) {
-    if (!uniqueAnswerKeyIds.has(id)) {
-      throw new Error(`Invariant failed: questionId ${id} is missing from answerKeySnapshots`);
+  const uniqueB = new Set(setB);
+  for (const id of setA) {
+    if (!uniqueB.has(id)) {
+      throw new Error(`Invariant failed: ID ${id} from ${nameA} is missing from ${nameB}`);
     }
   }
+}
+
+export function scoreAttempt(attempt: ExamAttemptDocument, answers: UserAnswerDocument[]) {
+  const rootQuestionIds = attempt.questionIds.map(id => id.toHexString());
+  const snapshotQuestionIds = attempt.questionSnapshots.map(s => s.questionId.toHexString());
+  const answerKeyIds = attempt.answerKeySnapshots.map(k => k.questionId.toHexString());
+
+  assertUniqueIds(rootQuestionIds, "questionIds");
+  assertUniqueIds(snapshotQuestionIds, "questionSnapshots");
+  assertUniqueIds(answerKeyIds, "answerKeySnapshots");
+
+  assertSameIdSet(rootQuestionIds, snapshotQuestionIds, "questionIds", "questionSnapshots");
+  assertSameIdSet(snapshotQuestionIds, answerKeyIds, "questionSnapshots", "answerKeySnapshots");
 
   const answerMap = new Map(answers.map((answer) => [answer.questionId.toHexString(), answer]));
   let totalEarnedPoints = 0;

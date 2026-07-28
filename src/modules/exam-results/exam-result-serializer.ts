@@ -1,7 +1,9 @@
 import type { ExamAttemptDocument, ExamResultItemSnapshot } from "../exam-attempts/exam-attempt.types";
 import { ApiError } from "../../lib/api/response";
+import { roundScore } from "../exam-attempts/exam-attempt-scoring";
+import type { SerializedExamResult, SerializedExamResultQuestion, LegacyExamResultQuestionSnapshot } from "./exam-result.types";
 
-export function serializeResult(attempt: ExamAttemptDocument) {
+export function serializeResult(attempt: ExamAttemptDocument): SerializedExamResult {
   if (attempt.status !== "submitted" && attempt.status !== "expired") {
     throw new ApiError("RESULT_NOT_READY", "Bài thi chưa được nộp, không thể xem kết quả.");
   }
@@ -32,7 +34,11 @@ export function serializeResult(attempt: ExamAttemptDocument) {
     throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Điểm số không khớp với root attempt.");
   }
 
-  let mergedQuestions: any[] = [];
+  if (summary.scoreScale !== attempt.scoreScale || summary.scoreScale !== 10) {
+    throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Thang điểm không khớp.");
+  }
+
+  let mergedQuestions: SerializedExamResultQuestion[] = [];
 
   if (version === 2 && attempt.resultSnapshot.items) {
     const items = attempt.resultSnapshot.items;
@@ -50,10 +56,22 @@ export function serializeResult(attempt: ExamAttemptDocument) {
       derivedEarned += item.result.earnedScore;
       derivedMax += item.result.maxScore;
 
-      if (item.result.status === "correct") derivedCorrect++;
-      else if (item.result.status === "partial") derivedPartial++;
-      else if (item.result.status === "incorrect") derivedIncorrect++;
-      else derivedUnanswered++;
+      switch (item.result.status) {
+        case "correct":
+          derivedCorrect++;
+          break;
+        case "partial":
+          derivedPartial++;
+          break;
+        case "incorrect":
+          derivedIncorrect++;
+          break;
+        case "unanswered":
+          derivedUnanswered++;
+          break;
+        default:
+          throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Trạng thái kết quả câu hỏi không hợp lệ.");
+      }
     }
 
     if (derivedCorrect !== summary.correctCount || derivedPartial !== summary.partiallyCorrectCount || derivedIncorrect !== summary.incorrectCount || derivedUnanswered !== summary.unansweredCount) {
@@ -62,6 +80,12 @@ export function serializeResult(attempt: ExamAttemptDocument) {
 
     if (derivedEarned !== attempt.totalEarnedPoints || derivedMax !== attempt.totalMaxPoints) {
       throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Tổng điểm không khớp với root attempt.");
+    }
+
+    const derivedScore = roundScore(derivedMax > 0 ? (derivedEarned / derivedMax) * attempt.scoreScale : 0);
+
+    if (derivedScore !== summary.score || derivedScore !== attempt.score) {
+      throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Điểm tổng không khớp với điểm từng câu.");
     }
 
     mergedQuestions = attempt.questionSnapshots.map(snapshot => {
@@ -93,16 +117,22 @@ export function serializeResult(attempt: ExamAttemptDocument) {
       };
     });
   } else if ((!version || version === 1) && attempt.resultSnapshot.questions) {
-    const legacyQuestions = attempt.resultSnapshot.questions;
+    const legacyQuestions = attempt.resultSnapshot.questions as LegacyExamResultQuestionSnapshot[];
     if (legacyQuestions.length !== attempt.questionSnapshots.length) {
       throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ (Legacy): Số lượng câu hỏi không khớp.");
     }
-    mergedQuestions = legacyQuestions.map(q => ({
-        ...q,
+    mergedQuestions = legacyQuestions.map(q => {
+      if (!q || !q.questionId || !Array.isArray(q.sourceExamSetIds)) {
+        throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả legacy không hợp lệ.");
+      }
+      const { questionId: _oldId, sourceExamSetIds: _oldSourceIds, originExamSetId: _oldOriginId, ...rest } = q;
+      return {
+        ...rest,
         questionId: q.questionId.toString(),
         sourceExamSetIds: q.sourceExamSetIds.map((id: any) => id.toString()),
         ...(q.originExamSetId ? { originExamSetId: q.originExamSetId.toString() } : {}),
-    }));
+      };
+    });
   } else {
     throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Không tìm thấy nội dung bài thi.");
   }

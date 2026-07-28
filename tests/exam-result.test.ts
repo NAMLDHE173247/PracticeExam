@@ -1,8 +1,20 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
+import { ApiError } from "../src/lib/api/response";
 import { serializeResult } from "../src/modules/exam-results/exam-result-serializer";
 import { scoreAttempt } from "../src/modules/exam-attempts/exam-attempt-scoring";
 import type { ExamAttemptDocument } from "../src/modules/exam-attempts/exam-attempt.types";
+
+function expectApi409(fn: () => void, code: string) {
+  try {
+    fn();
+    expect.fail("Expected function to throw");
+  } catch (e: any) {
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e.status).toBe(409);
+    expect(e.code).toBe(code);
+  }
+}
 
 const subjectId = new ObjectId();
 const examSetId = new ObjectId();
@@ -120,14 +132,14 @@ describe("Immutable Exam Result Serialization", () => {
     expect(q1.content.original).toBe("Q1");
     expect(q1.result.correctOptionIds).toEqual(["A"]);
     expect(q1.userAnswer.selectedOptionIds).toEqual(["A"]);
-    expect(q1.explanation.original).toBe("Exp1");
+    expect(q1.explanation!.original).toBe("Exp1");
     
     // Check Q2
     const q2 = result.questions[1];
     expect(q2.content.original).toBe("Q2");
     expect(q2.result.correctStatementAnswers).toEqual([{ statementId: "S1", answer: true }, { statementId: "S2", answer: false }]);
     expect(q2.userAnswer.statementAnswers).toEqual([{ statementId: "S1", answer: true }, { statementId: "S2", answer: false }]);
-    expect(q2.explanation.original).toBe("Exp2");
+    expect(q2.explanation!.original).toBe("Exp2");
   });
 
   it("ensures original question modification after submit does not affect result (via immutability check)", () => {
@@ -141,22 +153,44 @@ describe("Immutable Exam Result Serialization", () => {
   it("throws 409 if missing or extra item", () => {
     const attempt = createMockAttempt();
     attempt.resultSnapshot!.items!.pop();
-    expect(() => serializeResult(attempt)).toThrowError("Dữ liệu kết quả không hợp lệ: Số lượng result items không khớp.");
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
   });
 
   it("throws 409 if duplicate item", () => {
     const attempt = createMockAttempt();
-    attempt.resultSnapshot!.items![1] = attempt.resultSnapshot!.items![0]; // duplicate
-    // It will throw when mapping over questionSnapshots and not finding the item for Q2
-    // Wait, items.length is still 2. But we will miss Q2.
-    expect(() => serializeResult(attempt)).toThrowError("Thiếu thông tin cho câu hỏi.");
+    attempt.resultSnapshot!.items![1] = attempt.resultSnapshot!.items![0]; 
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
   });
 
   it("throws 409 if summary does not match items", () => {
     const attempt = createMockAttempt();
-    // Change item result to incorrect but leave summary as correct
     attempt.resultSnapshot!.items![0].result.status = "incorrect";
-    expect(() => serializeResult(attempt)).toThrowError("Trạng thái câu trả lời không khớp với summary.");
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if derived overall score mismatches summary and root", () => {
+    const attempt = createMockAttempt();
+    // Max is 2. Items sum to 2. Earned is 2. Derived score is 10.
+    // Let's modify root/summary score to 9.5 without changing items.
+    attempt.score = 9.5;
+    attempt.resultSnapshot!.summary.score = 9.5;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if item has unknown status", () => {
+    const attempt = createMockAttempt();
+    // @ts-ignore
+    attempt.resultSnapshot!.items![0].result.status = "invalid_status";
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if item has non-finite or out of bounds earnedScore", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot!.items![0].result.earnedScore = 5; // maxScore is 1
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+    
+    attempt.resultSnapshot!.items![0].result.earnedScore = -1;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
   });
 
   it("serializes legacy format correctly", () => {
@@ -188,6 +222,17 @@ describe("Immutable Exam Result Serialization", () => {
     expect(result.questions[0].content.original).toBe("Q1");
   });
 
+  it("throws 409 for malformed legacy data", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot = {
+      version: 1,
+      generatedAt: new Date(),
+      summary: attempt.resultSnapshot!.summary,
+      questions: [ { invalid: "data" } ], // Missing sourceExamSetIds and questionId
+    } as any;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
   it("does not duplicate content or correct answers inside compact result items", () => {
     const attempt = createMockAttempt();
     const str = JSON.stringify(attempt.resultSnapshot!.items);
@@ -214,13 +259,21 @@ describe("Score Invariants Before Terminal", () => {
     // Same length, but replace the second answer key ID with something else
     attempt.answerKeySnapshots[1].questionId = new ObjectId();
     
-    expect(() => scoreAttempt(attempt, [])).toThrowError(/Invariant failed: questionId .* is missing from answerKeySnapshots/);
+    expect(() => scoreAttempt(attempt, [])).toThrowError(/ID .* from questionSnapshots is missing from answerKeySnapshots/);
   });
 
   it("rejects duplicate IDs within answerKeySnapshots", () => {
     const attempt = createMockAttempt({ status: "in_progress" });
     attempt.answerKeySnapshots[1] = attempt.answerKeySnapshots[0]; // duplicate
     
-    expect(() => scoreAttempt(attempt, [])).toThrowError(/Duplicate questionIds found in answerKeySnapshots/);
+    expect(() => scoreAttempt(attempt, [])).toThrowError(/Duplicate IDs found in answerKeySnapshots/);
+  });
+
+  it("rejects mismatch with root questionIds", () => {
+    const attempt = createMockAttempt({ status: "in_progress" });
+    // Root questionIds has an extra/different ID
+    attempt.questionIds[0] = new ObjectId();
+    
+    expect(() => scoreAttempt(attempt, [])).toThrowError(/ID .* from questionIds is missing from questionSnapshots/);
   });
 });
