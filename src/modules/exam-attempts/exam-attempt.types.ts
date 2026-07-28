@@ -59,7 +59,7 @@ export type ExamResultSnapshot =
   | {
       version?: 1;
       items?: never;
-      questions: any[]; // Legacy format
+      questions: unknown[]; // Legacy format
       generatedAt: Date;
       summary: ExamResultSnapshotSummary;
     };

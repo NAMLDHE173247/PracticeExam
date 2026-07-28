@@ -50,7 +50,7 @@ export function serializeResult(attempt: ExamAttemptDocument): SerializedExamRes
     let derivedEarned = 0, derivedMax = 0;
 
     for (const item of items) {
-      if (item.result.earnedScore < 0 || item.result.earnedScore > item.result.maxScore) {
+      if (!Number.isFinite(item.result.earnedScore) || !Number.isFinite(item.result.maxScore) || item.result.maxScore !== 1) {
         throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", `Dữ liệu kết quả không hợp lệ: Điểm số câu hỏi không hợp lệ (${item.result.earnedScore}/${item.result.maxScore}).`);
       }
       derivedEarned += item.result.earnedScore;
@@ -58,16 +58,24 @@ export function serializeResult(attempt: ExamAttemptDocument): SerializedExamRes
 
       switch (item.result.status) {
         case "correct":
+          if (item.result.earnedScore !== item.result.maxScore) {
+            throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Trạng thái correct nhưng điểm không tối đa.");
+          }
           derivedCorrect++;
           break;
         case "partial":
+          if (item.result.earnedScore <= 0 || item.result.earnedScore >= item.result.maxScore) {
+            throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Trạng thái partial nhưng điểm không hợp lệ.");
+          }
           derivedPartial++;
           break;
         case "incorrect":
-          derivedIncorrect++;
-          break;
         case "unanswered":
-          derivedUnanswered++;
+          if (item.result.earnedScore !== 0) {
+            throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", `Dữ liệu kết quả không hợp lệ: Trạng thái ${item.result.status} nhưng có điểm.`);
+          }
+          if (item.result.status === "incorrect") derivedIncorrect++;
+          else derivedUnanswered++;
           break;
         default:
           throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Trạng thái kết quả câu hỏi không hợp lệ.");
@@ -117,21 +125,42 @@ export function serializeResult(attempt: ExamAttemptDocument): SerializedExamRes
       };
     });
   } else if ((!version || version === 1) && attempt.resultSnapshot.questions) {
-    const legacyQuestions = attempt.resultSnapshot.questions as LegacyExamResultQuestionSnapshot[];
+    const legacyQuestions = attempt.resultSnapshot.questions as unknown[];
     if (legacyQuestions.length !== attempt.questionSnapshots.length) {
       throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ (Legacy): Số lượng câu hỏi không khớp.");
     }
-    mergedQuestions = legacyQuestions.map(q => {
-      if (!q || !q.questionId || !Array.isArray(q.sourceExamSetIds)) {
+    mergedQuestions = legacyQuestions.map(qUnsafe => {
+      if (!qUnsafe || typeof qUnsafe !== "object") {
         throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả legacy không hợp lệ.");
       }
-      const { questionId: _oldId, sourceExamSetIds: _oldSourceIds, originExamSetId: _oldOriginId, ...rest } = q;
+      
+      const q = qUnsafe as Record<string, any>;
+
+      if (!q.questionId || !Array.isArray(q.sourceExamSetIds) || !q.type || !q.content || !q.userAnswer || !q.result) {
+        throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả legacy không hợp lệ (thiếu field).");
+      }
+
+      if (q.result.status !== "correct" && q.result.status !== "incorrect" && q.result.status !== "partial" && q.result.status !== "unanswered") {
+        throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả legacy không hợp lệ (sai status).");
+      }
+
+      if (!Number.isFinite(q.result.earnedScore) || !Number.isFinite(q.result.maxScore) || q.result.maxScore !== 1) {
+         throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả legacy không hợp lệ (sai điểm).");
+      }
+
       return {
-        ...rest,
         questionId: q.questionId.toString(),
+        order: Number(q.order) || 0,
+        type: q.type,
+        content: q.content,
+        ...(q.options ? { options: q.options } : {}),
+        ...(q.statements ? { statements: q.statements } : {}),
+        userAnswer: q.userAnswer,
+        result: q.result,
+        ...(q.explanation ? { explanation: q.explanation } : {}),
         sourceExamSetIds: q.sourceExamSetIds.map((id: any) => id.toString()),
         ...(q.originExamSetId ? { originExamSetId: q.originExamSetId.toString() } : {}),
-      };
+      } as SerializedExamResultQuestion;
     });
   } else {
     throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Không tìm thấy nội dung bài thi.");

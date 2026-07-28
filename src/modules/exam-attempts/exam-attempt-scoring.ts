@@ -50,6 +50,37 @@ export function scoreAttempt(attempt: ExamAttemptDocument, answers: UserAnswerDo
   assertSameIdSet(rootQuestionIds, snapshotQuestionIds, "questionIds", "questionSnapshots");
   assertSameIdSet(snapshotQuestionIds, answerKeyIds, "questionSnapshots", "answerKeySnapshots");
 
+  const answerKeyMap = new Map(attempt.answerKeySnapshots.map(k => [k.questionId.toHexString(), k]));
+  for (const snapshot of attempt.questionSnapshots) {
+    const key = answerKeyMap.get(snapshot.questionId.toHexString());
+    if (!key || key.type !== snapshot.type) {
+      throw new Error(`Invariant failed: Question type mismatch for ${snapshot.questionId.toHexString()}`);
+    }
+
+    if (key.type === "single_choice" || key.type === "multiple_choice") {
+      const minOptions = key.type === "single_choice" ? 1 : 1;
+      const maxOptions = key.type === "single_choice" ? 1 : undefined;
+      const correctCount = key.correctOptionIds?.length ?? 0;
+      if (correctCount < minOptions || (maxOptions !== undefined && correctCount > maxOptions)) {
+        throw new Error(`Invariant failed: Invalid correctOptionIds length for ${snapshot.questionId.toHexString()}`);
+      }
+      
+      const optionIds = new Set(snapshot.options?.map(o => o.id) ?? []);
+      for (const id of key.correctOptionIds ?? []) {
+        if (!optionIds.has(id)) {
+          throw new Error(`Invariant failed: Correct option ${id} not found in options for ${snapshot.questionId.toHexString()}`);
+        }
+      }
+    } else if (key.type === "true_false_group") {
+      const statementIds = snapshot.statements?.map(s => s.id) ?? [];
+      const correctStatements = key.correctStatementAnswers ?? [];
+      
+      assertUniqueIds(statementIds, `statements for ${snapshot.questionId.toHexString()}`);
+      assertUniqueIds(correctStatements.map(s => s.statementId), `correctStatementAnswers for ${snapshot.questionId.toHexString()}`);
+      assertSameIdSet(statementIds, correctStatements.map(s => s.statementId), `statements for ${snapshot.questionId.toHexString()}`, `correctStatementAnswers for ${snapshot.questionId.toHexString()}`);
+    }
+  }
+
   const answerMap = new Map(answers.map((answer) => [answer.questionId.toHexString(), answer]));
   let totalEarnedPoints = 0;
   let correctCount = 0;

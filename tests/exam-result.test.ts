@@ -193,6 +193,40 @@ describe("Immutable Exam Result Serialization", () => {
     expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
   });
 
+  it("throws 409 if correct status with zero points", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot!.items![0].result.status = "correct";
+    attempt.resultSnapshot!.items![0].result.earnedScore = 0;
+    attempt.resultSnapshot!.items![0].result.maxScore = 1;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if unanswered status with positive points", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot!.items![0].result.status = "unanswered";
+    attempt.resultSnapshot!.items![0].result.earnedScore = 1;
+    attempt.resultSnapshot!.items![0].result.maxScore = 1;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if NaN earnedScore", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot!.items![0].result.earnedScore = Number.NaN;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if Infinity maxScore", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot!.items![0].result.maxScore = Number.POSITIVE_INFINITY;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if maxScore is 0", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot!.items![0].result.maxScore = 0;
+    expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
   it("serializes legacy format correctly", () => {
     const attempt = createMockAttempt();
     const legacyQuestions = attempt.resultSnapshot!.items!.map((item, index) => {
@@ -231,6 +265,35 @@ describe("Immutable Exam Result Serialization", () => {
       questions: [ { invalid: "data" } ], // Missing sourceExamSetIds and questionId
     } as any;
     expectApi409(() => serializeResult(attempt), "RESULT_SNAPSHOT_UNAVAILABLE");
+  });
+
+  it("throws 409 if legacy object contains unexpected secret/internal field not matching type", () => {
+    const attempt = createMockAttempt();
+    attempt.resultSnapshot = {
+      version: 1,
+      generatedAt: new Date(),
+      summary: attempt.resultSnapshot!.summary,
+      questions: [{ 
+        questionId: attempt.questionSnapshots[0].questionId.toString(),
+        sourceExamSetIds: [new ObjectId().toString()],
+        type: "multiple_choice",
+        content: { original: "Q1" },
+        userAnswer: { isFlagged: false },
+        result: { status: "correct", earnedScore: 1, maxScore: 1 },
+        secretInternalField: "should_be_stripped" 
+      },
+      { 
+        questionId: attempt.questionSnapshots[1].questionId.toString(),
+        sourceExamSetIds: [new ObjectId().toString()],
+        type: "true_false_group",
+        content: { original: "Q2" },
+        userAnswer: { isFlagged: false },
+        result: { status: "correct", earnedScore: 1, maxScore: 1 },
+      }],
+    } as any;
+    // We expect it to pass, but when we check the output, the secret field should be stripped.
+    const result = serializeResult(attempt);
+    expect((result.questions[0] as any).secretInternalField).toBeUndefined();
   });
 
   it("does not duplicate content or correct answers inside compact result items", () => {
@@ -275,5 +338,19 @@ describe("Score Invariants Before Terminal", () => {
     attempt.questionIds[0] = new ObjectId();
     
     expect(() => scoreAttempt(attempt, [])).toThrowError(/ID .* from questionIds is missing from questionSnapshots/);
+  });
+
+  it("rejects question type mismatch between snapshot and answer key", () => {
+    const attempt = createMockAttempt({ status: "in_progress" });
+    attempt.answerKeySnapshots[0].type = "true_false_group";
+    
+    expect(() => scoreAttempt(attempt, [])).toThrowError(/Invariant failed: Question type mismatch for/);
+  });
+
+  it("rejects missing correct answer for multiple choice", () => {
+    const attempt = createMockAttempt({ status: "in_progress" });
+    attempt.answerKeySnapshots[0].correctOptionIds = [];
+    
+    expect(() => scoreAttempt(attempt, [])).toThrowError(/Invariant failed: Invalid correctOptionIds length for/);
   });
 });
