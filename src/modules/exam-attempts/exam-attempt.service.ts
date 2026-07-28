@@ -184,10 +184,9 @@ export class ExamAttemptService {
         unansweredCount: scored.unansweredCount,
         totalQuestions: attempt.questionSnapshots.length,
       },
-      questions: attempt.questionSnapshots.map(snapshot => {
+      items: attempt.questionSnapshots.map(snapshot => {
         const answerKeys = attempt.answerKeySnapshots.filter(key => key.questionId.equals(snapshot.questionId));
         if (answerKeys.length !== 1) throw new Error(`Invariant failed: Expected exactly 1 answer key for question ${snapshot.questionId.toHexString()}, found ${answerKeys.length}`);
-        const answerKey = answerKeys[0];
 
         const gradings = scored.gradings.filter(g => g.key.questionId.equals(snapshot.questionId));
         if (gradings.length !== 1) throw new Error(`Invariant failed: Expected exactly 1 grading result for question ${snapshot.questionId.toHexString()}, found ${gradings.length}`);
@@ -197,13 +196,6 @@ export class ExamAttemptService {
 
         return {
           questionId: snapshot.questionId,
-          order: snapshot.order,
-          type: snapshot.type,
-          content: snapshot.content,
-          options: snapshot.options,
-          statements: snapshot.statements,
-          sourceExamSetIds: snapshot.sourceExamSetIds,
-          originExamSetId: snapshot.originExamSetId,
           userAnswer: {
             selectedOptionIds: answer?.selectedOptionIds,
             statementAnswers: answer?.statementAnswers,
@@ -213,15 +205,12 @@ export class ExamAttemptService {
             status: grading.result.isCorrect ? "correct" : grading.result.isPartiallyCorrect ? "partial" : (!answer?.selectedOptionIds?.length && !answer?.statementAnswers?.length) ? "unanswered" : "incorrect",
             earnedScore: grading.result.earnedScore,
             maxScore: grading.result.maxScore,
-            correctOptionIds: answerKey.correctOptionIds,
-            correctStatementAnswers: answerKey.correctStatementAnswers,
           },
-          explanation: answerKey.explanation,
         };
       }),
     };
 
-    const duplicateQuestionIds = resultSnapshot.questions.map(q => q.questionId.toHexString()).filter((item, index, array) => array.indexOf(item) !== index);
+    const duplicateQuestionIds = resultSnapshot.items!.map(q => q.questionId.toHexString()).filter((item, index, array) => array.indexOf(item) !== index);
     if (duplicateQuestionIds.length > 0) {
       throw new Error(`Invariant failed: Duplicate question IDs in result snapshot: ${duplicateQuestionIds.join(", ")}`);
     }

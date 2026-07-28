@@ -24,15 +24,8 @@ export interface ExamAttemptAnswerKey {
   explanation?: LocalizedText;
 }
 
-export interface ExamResultQuestionSnapshot {
+export interface ExamResultItemSnapshot {
   questionId: ObjectId;
-  order: number;
-  type: QuestionType;
-  content: LocalizedText;
-  options?: Array<{ id: string; label: string; content: LocalizedText }>;
-  statements?: Array<{ id: string; content: LocalizedText }>;
-  sourceExamSetIds: ObjectId[];
-  originExamSetId?: ObjectId;
   userAnswer: {
     selectedOptionIds?: string[];
     statementAnswers?: Array<{ statementId: string; answer: boolean }>;
@@ -42,10 +35,7 @@ export interface ExamResultQuestionSnapshot {
     status: "correct" | "partial" | "incorrect" | "unanswered";
     earnedScore: number;
     maxScore: number;
-    correctOptionIds?: string[];
-    correctStatementAnswers?: Array<{ statementId: string; answer: boolean }>;
   };
-  explanation?: LocalizedText;
 }
 
 export interface ExamAttemptSettings {
@@ -82,7 +72,8 @@ export interface ExamAttemptDocument {
   totalMaxPoints?: number;
   settings: ExamAttemptSettings;
   resultSnapshot?: {
-    questions: ExamResultQuestionSnapshot[];
+    items?: ExamResultItemSnapshot[]; // new compacted format
+    questions?: any[]; // legacy format
     generatedAt: Date;
     summary: {
       score: number;
