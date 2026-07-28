@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { loadEnvConfig } from "@next/env";
+import { createQuestionContentHash } from "../modules/questions/question-hash";
 
 loadEnvConfig(process.cwd());
 
@@ -85,12 +86,18 @@ async function main(): Promise<void> {
     const subjectId = subjectIds.get(seed.code);
     const examSetId = examSetIds.get(seed.code)?.[0];
     if (!subjectId || !examSetId) continue;
+    const newHash = createQuestionContentHash(seed);
+    const existing = await questions.findOne({ subjectId, $or: [{ contentHash: newHash }, { contentHash: seed.hash }, { type: seed.type, "content.original": seed.content.original }] });
+    if (existing) {
+      if (existing.contentHash !== newHash) console.log(`Seed detected legacy hash for ${seed.hash}: ${existing.contentHash}. No migration was applied.`);
+      continue;
+    }
     const question = {
       _id: new ObjectId(), subjectId, examSetIds: [examSetId], type: seed.type, content: seed.content,
       ...(seed.type === "true_false_group" ? { statements: seed.statements } : { options: seed.options }),
-      tags: ["development"], status: "published" as const, contentHash: seed.hash, createdAt: now, updatedAt: now,
+      tags: ["development"], status: "published" as const, contentHash: newHash, createdAt: now, updatedAt: now,
     };
-    await questions.updateOne({ subjectId, contentHash: seed.hash }, { $setOnInsert: question }, { upsert: true });
+    await questions.insertOne(question);
   }
 
   for (const [code, subjectId] of subjectIds) {

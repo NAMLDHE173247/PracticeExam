@@ -1,41 +1,145 @@
-import { createHash } from "crypto";
-import { getCollection } from "../../lib/mongodb";
-import { runInTransaction } from "../../lib/mongodb";
+import { getCollection, runInTransaction } from "../../lib/mongodb";
 import { escapeRegExp } from "../../lib/api/query";
 import { ApiError, parseObjectId } from "../../lib/api/response";
 import { QuestionRepository } from "./question.repository";
 import { createQuestionRequestSchema, questionQuerySchema, updateQuestionRequestSchema } from "./question.api.schema";
+import { createQuestionContentHash } from "./question-hash";
 import { questionSchema } from "./question.schema";
 import type { QuestionDocument } from "./question.types";
 
-function contentHash(question: unknown): string { return createHash("sha256").update(JSON.stringify(question)).digest("hex"); }
 export class QuestionService {
-  constructor(private readonly repository: QuestionRepository, private readonly subjects = getCollection("subjects"), private readonly examSets = getCollection("exam_sets")) {}
+  constructor(
+    private readonly repository: QuestionRepository,
+    private readonly subjects = getCollection("subjects"),
+    private readonly examSets = getCollection("exam_sets"),
+  ) {}
+
   async list(raw: Record<string, string | undefined>, page: number, pageSize: number) {
-    const query = questionQuerySchema.parse(raw); const filter = { ...(query.subjectId ? { subjectId: parseObjectId(query.subjectId, "subjectId") } : {}), ...(query.examSetId ? { examSetIds: parseObjectId(query.examSetId, "examSetId") } : {}), ...(query.type ? { type: query.type } : {}), ...(query.status ? { status: query.status } : {}), ...(query.difficulty ? { difficulty: query.difficulty } : {}), ...(query.tag ? { tags: query.tag } : {}), ...(query.translationStatus ? { translationStatus: query.translationStatus } : {}), ...(query.search ? { $or: [{ "content.original": { $regex: escapeRegExp(query.search), $options: "i" } }, { "content.vi": { $regex: escapeRegExp(query.search), $options: "i" } }, { tags: { $regex: escapeRegExp(query.search), $options: "i" } }] } : {}) };
-    const [items, total] = await this.repository.findPage(filter, { [query.sort]: query.order === "desc" ? -1 : 1 }, (page - 1) * pageSize, pageSize); return { items, total };
+    const query = questionQuerySchema.parse(raw);
+    const filter = {
+      ...(query.subjectId ? { subjectId: parseObjectId(query.subjectId, "subjectId") } : {}),
+      ...(query.examSetId ? { examSetIds: parseObjectId(query.examSetId, "examSetId") } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.difficulty ? { difficulty: query.difficulty } : {}),
+      ...(query.tag ? { tags: query.tag } : {}),
+      ...(query.translationStatus ? { translationStatus: query.translationStatus } : {}),
+      ...(query.search ? { $or: [{ "content.original": { $regex: escapeRegExp(query.search), $options: "i" } }, { "content.vi": { $regex: escapeRegExp(query.search), $options: "i" } }, { tags: { $regex: escapeRegExp(query.search), $options: "i" } }] } : {}),
+    };
+    const [items, total] = await this.repository.findPage(filter, { [query.sort]: query.order === "desc" ? -1 : 1 }, (page - 1) * pageSize, pageSize);
+    return { items, total };
   }
-  async get(id: QuestionDocument["_id"]) { const question = await this.repository.findById(id); if (!question) throw new ApiError("NOT_FOUND", "Không tìm thấy câu hỏi."); return question; }
+
+  async get(id: QuestionDocument["_id"]) {
+    const question = await this.repository.findById(id);
+    if (!question) throw new ApiError("NOT_FOUND", "Không tìm thấy câu hỏi.");
+    return question;
+  }
+
   private async validateRelations(subjectId: QuestionDocument["subjectId"], examSetIds: QuestionDocument["examSetIds"]) {
-    const subject = await (await this.subjects).findOne({ _id: subjectId }); if (!subject) throw new ApiError("INVALID_RELATION", "Môn học không tồn tại."); if (!subject.isActive) throw new ApiError("CONFLICT", "Môn học đã bị vô hiệu hóa.");
-    const sets = await (await this.examSets).find({ _id: { $in: examSetIds } }).toArray(); if (sets.length !== examSetIds.length) throw new ApiError("INVALID_RELATION", "Một hoặc nhiều bộ đề không tồn tại."); if (sets.some((set) => !set.subjectId.equals(subjectId))) throw new ApiError("INVALID_RELATION", "Các bộ đề phải thuộc cùng môn."); if (sets.some((set) => set.status === "archived")) throw new ApiError("CONFLICT", "Không thể liên kết bộ đề đã archive.");
+    const subject = await (await this.subjects).findOne({ _id: subjectId });
+    if (!subject) throw new ApiError("INVALID_RELATION", "Môn học không tồn tại.");
+    if (!subject.isActive) throw new ApiError("CONFLICT", "Môn học đã bị vô hiệu hóa.");
+    const sets = await (await this.examSets).find({ _id: { $in: examSetIds } }).toArray();
+    if (sets.length !== examSetIds.length) throw new ApiError("INVALID_RELATION", "Một hoặc nhiều bộ đề không tồn tại.");
+    if (sets.some((set) => !set.subjectId.equals(subjectId))) throw new ApiError("INVALID_RELATION", "Các bộ đề phải thuộc cùng môn.");
+    if (sets.some((set) => set.status === "archived")) throw new ApiError("CONFLICT", "Không thể liên kết bộ đề đã archive.");
   }
-  private async updateCounts(ids: QuestionDocument["examSetIds"], delta: number, session?: import("mongodb").ClientSession) { if (!ids.length) return; await (await this.examSets).updateMany({ _id: { $in: ids }, ...(delta < 0 ? { questionCount: { $gt: 0 } } : {}) }, { $inc: { questionCount: delta } }, { session }); }
+
+  private async updateCounts(ids: QuestionDocument["examSetIds"], delta: number, session?: import("mongodb").ClientSession) {
+    if (!ids.length) return;
+    await (await this.examSets).updateMany({ _id: { $in: ids }, ...(delta < 0 ? { questionCount: { $gt: 0 } } : {}) }, { $inc: { questionCount: delta } }, { session });
+  }
+
   async create(input: unknown) {
-    const body = createQuestionRequestSchema.parse(input); const source = { ...body } as Record<string, unknown>; delete source.allowDuplicate; delete source.question; const parsed = questionSchema.parse({ ...source, contentHash: "pending" });
-    const subjectId = parseObjectId(parsed.subjectId, "subjectId"); const examSetIds = parsed.examSetIds.map((id) => parseObjectId(id, "examSetId")); await this.validateRelations(subjectId, examSetIds);
-    const hash = contentHash({ ...parsed, subjectId: subjectId.toHexString(), examSetIds: examSetIds.map((id) => id.toHexString()), contentHash: undefined }); if (!body.allowDuplicate && await this.repository.findByHash(subjectId, hash)) throw new ApiError("DUPLICATE_RESOURCE", "Câu hỏi trùng nội dung trong môn học.");
-    const now = new Date(); const document = { ...parsed, _id: undefined, subjectId, examSetIds, contentHash: hash, createdAt: now, updatedAt: now } as unknown as Omit<QuestionDocument, "_id">; const insertedId = await runInTransaction(async (session) => { const result = await this.repository.create(document, session); await this.updateCounts(examSetIds, 1, session); return result.insertedId; }); return this.get(insertedId);
+    const body = createQuestionRequestSchema.parse(input);
+    const source = { ...body } as Record<string, unknown>;
+    delete source.allowDuplicate;
+    delete source.question;
+    const parsed = questionSchema.parse({ ...source, contentHash: "pending" });
+    const subjectId = parseObjectId(parsed.subjectId, "subjectId");
+    const examSetIds = parsed.examSetIds.map((id) => parseObjectId(id, "examSetId"));
+    await this.validateRelations(subjectId, examSetIds);
+    const hash = createQuestionContentHash(parsed);
+    if (!body.allowDuplicate && await this.repository.findByHash(subjectId, hash)) throw new ApiError("DUPLICATE_RESOURCE", "Câu hỏi trùng nội dung trong môn học.");
+    const now = new Date();
+    const document = { ...parsed, subjectId, examSetIds, contentHash: hash, createdAt: now, updatedAt: now } as unknown as Omit<QuestionDocument, "_id">;
+    const insertedId = examSetIds.length === 0
+      ? (await this.repository.create(document)).insertedId
+      : await runInTransaction(async (session) => {
+          const result = await this.repository.create(document, session);
+          await this.updateCounts(examSetIds, 1, session);
+          return result.insertedId;
+        });
+    return this.get(insertedId);
   }
+
   async update(id: QuestionDocument["_id"], input: unknown) {
-    const current = await this.get(id); const patch = updateQuestionRequestSchema.parse(input); if (!Object.keys(patch).length) throw new ApiError("VALIDATION_ERROR", "Body không được rỗng.");
-    const candidate = { subjectId: current.subjectId.toHexString(), examSetIds: patch.examSetIds ?? current.examSetIds.map((item) => item.toHexString()), type: current.type, content: patch.content ?? current.content, options: current.type === "true_false_group" ? undefined : patch.options ?? current.options, statements: current.type === "true_false_group" ? patch.statements ?? current.statements : undefined, explanation: patch.explanation ?? current.explanation, difficulty: patch.difficulty ?? current.difficulty, tags: patch.tags ?? current.tags, status: patch.status ?? current.status, source: patch.source ?? current.source, translationStatus: patch.translationStatus ?? current.translationStatus, contentHash: "pending" };
-    const parsed = questionSchema.parse(candidate); const examSetIds = parsed.examSetIds.map((item) => parseObjectId(item, "examSetId")); await this.validateRelations(current.subjectId, examSetIds); const hash = contentHash({ ...parsed, subjectId: current.subjectId.toHexString(), examSetIds: examSetIds.map((item) => item.toHexString()), contentHash: undefined }); const duplicate = await this.repository.findByHash(current.subjectId, hash, id); if (duplicate) throw new ApiError("DUPLICATE_RESOURCE", "Câu hỏi trùng nội dung trong môn học.");
-    const oldIds = current.examSetIds; const added = examSetIds.filter((item) => !oldIds.some((old) => old.equals(item))); const removed = oldIds.filter((item) => !examSetIds.some((next) => next.equals(item))); const update = { ...parsed, subjectId: current.subjectId, examSetIds, contentHash: hash, updatedAt: new Date() }; return runInTransaction(async (session) => { const result = await this.repository.update(id, { $set: update }, session); if (!result) throw new ApiError("NOT_FOUND", "Không tìm thấy câu hỏi."); await this.updateCounts(added, 1, session); await this.updateCounts(removed, -1, session); return result; });
+    const current = await this.get(id);
+    const patch = updateQuestionRequestSchema.parse(input);
+    if (!Object.keys(patch).length) throw new ApiError("VALIDATION_ERROR", "Body không được rỗng.");
+    const candidate = {
+      subjectId: current.subjectId.toHexString(),
+      examSetIds: patch.examSetIds ?? current.examSetIds.map((item) => item.toHexString()),
+      type: current.type,
+      content: patch.content ?? current.content,
+      options: current.type === "true_false_group" ? undefined : patch.options ?? current.options,
+      statements: current.type === "true_false_group" ? patch.statements ?? current.statements : undefined,
+      explanation: patch.explanation ?? current.explanation,
+      difficulty: patch.difficulty ?? current.difficulty,
+      tags: patch.tags ?? current.tags,
+      status: patch.status ?? current.status,
+      source: patch.source ?? current.source,
+      translationStatus: patch.translationStatus ?? current.translationStatus,
+      contentHash: "pending",
+    };
+    const parsed = questionSchema.parse(candidate);
+    const examSetIds = parsed.examSetIds.map((item) => parseObjectId(item, "examSetId"));
+    await this.validateRelations(current.subjectId, examSetIds);
+    const hash = createQuestionContentHash(parsed);
+    if (await this.repository.findByHash(current.subjectId, hash, id)) throw new ApiError("DUPLICATE_RESOURCE", "Câu hỏi trùng nội dung trong môn học.");
+    const oldIds = current.examSetIds;
+    const added = examSetIds.filter((item) => !oldIds.some((old) => old.equals(item)));
+    const removed = oldIds.filter((item) => !examSetIds.some((next) => next.equals(item)));
+    const update = { ...parsed, subjectId: current.subjectId, examSetIds, contentHash: hash, updatedAt: new Date() };
+    return runInTransaction(async (session) => {
+      const result = await this.repository.update(id, { $set: update }, session);
+      if (!result) throw new ApiError("NOT_FOUND", "Không tìm thấy câu hỏi.");
+      await this.updateCounts(added, 1, session);
+      await this.updateCounts(removed, -1, session);
+      return result;
+    });
   }
-  async remove(id: QuestionDocument["_id"]) { const question = await this.get(id); const result = await this.repository.update(id, { $set: { status: "archived", updatedAt: new Date() } }); return { question: result, archived: true, questionCountUnchanged: question.examSetIds.length > 0 }; }
-  async attach(examSetId: QuestionDocument["examSetIds"][number], questionId: QuestionDocument["_id"]) { const question = await this.get(questionId); if (question.status === "archived") throw new ApiError("CONFLICT", "Không thể attach câu hỏi đã archive."); await this.validateRelations(question.subjectId, [examSetId]); const attached = await runInTransaction(async (session) => { const result = await this.repository.addExamSet(questionId, examSetId, session); if (result.modifiedCount > 0) await this.updateCounts([examSetId], 1, session); return result.modifiedCount > 0; }); return { question: await this.get(questionId), attached }; }
-  async detach(examSetId: QuestionDocument["examSetIds"][number], questionId: QuestionDocument["_id"]) { await this.get(questionId); const detached = await runInTransaction(async (session) => { const result = await this.repository.removeExamSet(questionId, examSetId, session); if (result.modifiedCount > 0) await this.updateCounts([examSetId], -1, session); return result.modifiedCount > 0; }); return { question: await this.get(questionId), detached }; }
+
+  async remove(id: QuestionDocument["_id"]) {
+    const question = await this.get(id);
+    const result = await this.repository.update(id, { $set: { status: "archived", updatedAt: new Date() } });
+    return { question: result, archived: true, questionCountUnchanged: question.examSetIds.length > 0 };
+  }
+
+  async attach(examSetId: QuestionDocument["examSetIds"][number], questionId: QuestionDocument["_id"]) {
+    const question = await this.get(questionId);
+    if (question.status === "archived") throw new ApiError("CONFLICT", "Không thể attach câu hỏi đã archive.");
+    await this.validateRelations(question.subjectId, [examSetId]);
+    const attached = await runInTransaction(async (session) => {
+      const result = await this.repository.addExamSet(questionId, examSetId, session);
+      if (result.modifiedCount > 0) await this.updateCounts([examSetId], 1, session);
+      return result.modifiedCount > 0;
+    });
+    return { question: await this.get(questionId), attached };
+  }
+
+  async detach(examSetId: QuestionDocument["examSetIds"][number], questionId: QuestionDocument["_id"]) {
+    await this.get(questionId);
+    const detached = await runInTransaction(async (session) => {
+      const result = await this.repository.removeExamSet(questionId, examSetId, session);
+      if (result.modifiedCount > 0) await this.updateCounts([examSetId], -1, session);
+      return result.modifiedCount > 0;
+    });
+    return { question: await this.get(questionId), detached };
+  }
 }
 
-export async function getQuestionService() { return new QuestionService(new QuestionRepository(await getCollection("questions"))); }
+export async function getQuestionService() {
+  return new QuestionService(new QuestionRepository(await getCollection("questions")));
+}
