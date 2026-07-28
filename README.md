@@ -10,9 +10,12 @@ npm run db:seed
 npm run db:audit:legacy
 npm run db:audit:question-counts
 npm run db:repair:question-counts
+npm run db:audit:import-jobs
 ```
 
 Multi-document transactions require MongoDB Atlas or a local replica set. Repair scripts are manual and never execute from GET handlers.
+
+Phase 2B import uses `POST /api/questions/import/validate`, `GET /api/questions/import/:jobId`, `POST /api/questions/import/:jobId/confirm` and `POST /api/questions/import/:jobId/cancel`. It supports JSON and structured text only; PDF, DOCX, spreadsheet, OCR, AI parsing and frontend import UI are not implemented.
 
 ## Getting Started
 

@@ -15,6 +15,7 @@
     "db:audit:legacy": "tsx src/scripts/audit-legacy-question-sets.ts",
     "db:audit:question-counts": "tsx src/scripts/audit-question-counts.ts",
     "db:repair:question-counts": "tsx src/scripts/repair-question-counts.ts"
+    ,"db:audit:import-jobs": "tsx src/scripts/audit-import-jobs.ts"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
