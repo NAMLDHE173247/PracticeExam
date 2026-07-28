@@ -7,11 +7,14 @@ import { parseJsonImport } from "../src/modules/imports/import-parser-json";
 import { parseStructuredText } from "../src/modules/imports/import-parser-structured-text";
 import { validateImportItems } from "../src/modules/imports/import-validator";
 import { QuestionImportService } from "../src/modules/imports/import.service";
+import { createQuestionContentHash } from "../src/modules/questions/question-hash";
+import { normalizeImportQuestion } from "../src/modules/imports/import-normalizer";
+import { errorResponse } from "../src/lib/api/response";
 import type { QuestionImportRepository } from "../src/modules/imports/import.repository";
 
 const subjectId = new ObjectId().toHexString();
 const question = { type: "single_choice", content: "Question", options: [{ label: "A", content: "One", isCorrect: true }, { label: "B", content: "Two", isCorrect: false }] };
-const normalizedQuestion = { type: "single_choice" as const, content: { original: "Question" }, options: [{ id: "A", label: "A", content: { original: "One" }, isCorrect: true }, { id: "B", label: "B", content: { original: "Two" }, isCorrect: false }] };
+const normalizedQuestion = { type: "single_choice" as const, content: { original: "Question" }, options: [{ id: "A", label: "A", content: { original: "One" }, isCorrect: true }, { id: "B", label: "B", content: { original: "Two" }, isCorrect: false }], tags: [], status: "draft" as const };
 
 describe("Phase 2B import parsers", () => {
   it("parses a JSON array and normalizes string content", () => {
@@ -45,14 +48,26 @@ describe("Phase 2B import parsers", () => {
     expect(parseStructuredText("outside\n").rootIssues[0].code).toBe("CONTENT_OUTSIDE_BLOCK");
   });
 
+  it("reports unrecognized structured lines with a bounded line snippet", () => {
+    const result = parseStructuredText(`[QUESTION]\nTYPE: single_choice\nCONTNT: What is HTTP?\nANSWER B\n${"x".repeat(250)}\nA: One\nB: Two\nANSWER: A\n[/QUESTION]`);
+    const issues = result.items[0].parseIssues.filter((issue) => issue.code === "UNRECOGNIZED_LINE");
+    expect(issues).toHaveLength(3); expect(issues[0].field).toBe("line.3"); expect(issues[0].message.length).toBeLessThan(240); expect(issues[1].field).toBe("line.4"); expect(issues[2].field).toBe("line.5");
+  });
+
+  it("applies every translation default and lets an item override it", () => {
+    const defaults = ["not_required", "pending", "translated", "reviewed", "failed"] as const;
+    for (const defaultTranslationStatus of defaults) expect(normalizeImportQuestion(normalizedQuestion, subjectId, [], { defaultStatus: "draft", defaultTranslationStatus }).translationStatus).toBe(defaultTranslationStatus);
+    expect(normalizeImportQuestion({ ...normalizedQuestion, translationStatus: "reviewed" }, subjectId, [], { defaultStatus: "draft", defaultTranslationStatus: "pending" }).translationStatus).toBe("reviewed");
+  });
+
   it("validates items, detects batch duplicate and honors skip policy", async () => {
-    const parsed = parseJsonImport(JSON.stringify([question, question])); const collection = { findOne: vi.fn().mockResolvedValue(null) };
+    const parsed = parseJsonImport(JSON.stringify([question, question])); const collection = { find: vi.fn().mockReturnValue({ project: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([]) }) }) };
     const result = await validateImportItems(parsed.items, subjectId, [], { defaultStatus: "draft" }, "skip", collection as never);
     expect(result[0].status).toBe("valid"); expect(result[1].status).toBe("skipped"); expect(result[1].issues[0].code).toBe("DUPLICATE_WITHIN_IMPORT");
   });
 
   it("detects database duplicate and allows it only with allow policy", async () => {
-    const parsed = parseJsonImport(JSON.stringify([question])); const existing = { _id: new ObjectId() }; const collection = { findOne: vi.fn().mockResolvedValue(existing) };
+    const parsed = parseJsonImport(JSON.stringify([question])); const existing = { _id: new ObjectId(), contentHash: createQuestionContentHash({ type: "single_choice", content: { original: "Question" }, options: [{ id: "A", label: "A", content: { original: "One" }, isCorrect: true }, { id: "B", label: "B", content: { original: "Two" }, isCorrect: false }] }) }; const collection = { find: vi.fn().mockReturnValue({ project: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([existing]) }) }) };
     const rejected = await validateImportItems(parsed.items, subjectId, [], { defaultStatus: "draft" }, "reject", collection as never); expect(rejected[0].status).toBe("duplicate_in_database");
     const allowed = await validateImportItems(parsed.items, subjectId, [], { defaultStatus: "draft" }, "allow", collection as never); expect(allowed[0].status).toBe("valid"); expect(allowed[0].duplicateQuestionId).toEqual(existing._id);
   });
@@ -61,7 +76,7 @@ describe("Phase 2B import parsers", () => {
     const jobs = { create: vi.fn().mockResolvedValue({ insertedId: new ObjectId() }) } as unknown as QuestionImportRepository;
     const subjectCollection = { findOne: vi.fn().mockResolvedValue({ _id: new ObjectId(subjectId), isActive: true }) };
     const examCollection = { find: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([]) }) };
-    const questionCollection = { findOne: vi.fn().mockResolvedValue(null), insertMany: vi.fn(), updateMany: vi.fn() };
+    const questionCollection = { find: vi.fn().mockReturnValue({ project: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([]) }) }), insertMany: vi.fn(), updateMany: vi.fn() };
     const service = new QuestionImportService(jobs, Promise.resolve(subjectCollection) as never, Promise.resolve(examCollection) as never, Promise.resolve(questionCollection) as never);
     const result = await service.validate({ subjectId, targetExamSetIds: [], inputFormat: "json", content: JSON.stringify([question]) });
     expect(result.summary.validItems).toBe(1); expect(jobs.create).toHaveBeenCalledOnce(); expect(questionCollection.insertMany).not.toHaveBeenCalled(); expect(questionCollection.updateMany).not.toHaveBeenCalled();
@@ -118,5 +133,21 @@ describe("Phase 2B import parsers", () => {
     const ready = { _id: new ObjectId(), status: "ready" as const, totalItems: 0, validItems: 0, invalidItems: 0, duplicateItems: 0, skippedItems: 0, importedItems: 0, previewItems: [], createdQuestionIds: [] }; const cancelled = { ...ready, status: "cancelled" as const }; const importing = { ...ready, status: "importing" as const }; const completed = { ...ready, status: "completed" as const };
     const jobs = { findById: vi.fn().mockResolvedValueOnce(ready).mockResolvedValueOnce(cancelled).mockResolvedValueOnce(cancelled).mockResolvedValueOnce(cancelled).mockResolvedValueOnce(importing).mockResolvedValueOnce(completed), cancel: vi.fn().mockResolvedValue(cancelled) } as unknown as QuestionImportRepository; const service = new QuestionImportService(jobs);
     await service.cancel(ready._id); await service.cancel(ready._id); await expect(service.cancel(ready._id)).rejects.toMatchObject({ code: "CONFLICT" }); await expect(service.cancel(ready._id)).rejects.toMatchObject({ code: "CONFLICT" }); expect(jobs.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("rejects oversized, empty and all-invalid imports before creating a ready job", async () => {
+    const jobs = { create: vi.fn() } as unknown as QuestionImportRepository; const subjects = { findOne: vi.fn().mockResolvedValue({ _id: new ObjectId(subjectId), isActive: true }) }; const sets = { find: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([]) }) }; const questions = { find: vi.fn() };
+    const service = new QuestionImportService(jobs, Promise.resolve(subjects) as never, Promise.resolve(sets) as never, Promise.resolve(questions) as never);
+    const many = JSON.stringify(Array.from({ length: 501 }, () => question));
+    await expect(service.validate({ subjectId, targetExamSetIds: [], inputFormat: "json", content: many })).rejects.toMatchObject({ code: "IMPORT_TOO_LARGE" });
+    await expect(service.validate({ subjectId, targetExamSetIds: [], inputFormat: "json", content: "[]" })).rejects.toMatchObject({ code: "IMPORT_NO_VALID_ITEMS" });
+    await expect(service.validate({ subjectId, targetExamSetIds: [], inputFormat: "json", content: JSON.stringify([{}]) })).rejects.toMatchObject({ code: "IMPORT_NO_VALID_ITEMS" });
+    expect(jobs.create).not.toHaveBeenCalled();
+  });
+
+  it("maps standalone transaction errors to HTTP 503", async () => {
+    const response = errorResponse(new Error("Transaction numbers are only allowed on a replica set member or mongos"));
+    expect(response.status).toBe(503); expect((await response.json()).error.code).toBe("TRANSACTION_REQUIRED");
+    expect(errorResponse(new Error("ordinary failure")).status).toBe(500);
   });
 });

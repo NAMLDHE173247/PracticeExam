@@ -8,23 +8,14 @@ export class ApiError extends Error {
   }
 }
 
-export function successResponse<T>(data: T, meta?: Record<string, number>): Response {
-  return Response.json({ success: true, data, ...(meta ? { meta } : {}) });
-}
+export function successResponse<T>(data: T, meta?: Record<string, number>): Response { return Response.json({ success: true, data, ...(meta ? { meta } : {}) }); }
 
 export function errorResponse(error: unknown): Response {
   if (error instanceof ApiError) return Response.json({ success: false, error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) } }, { status: error.status });
-  if (error instanceof Error && /transaction numbers are only allowed|replica set|transaction support/i.test(error.message)) return Response.json({ success: false, error: { code: "TRANSACTION_REQUIRED", message: "MongoDB transaction yêu cầu replica set hoặc MongoDB Atlas." } }, { status: 503 });
+  if (error instanceof Error && /transaction numbers are only allowed|replica set|transactions support|transaction support/i.test(error.message)) return Response.json({ success: false, error: { code: "TRANSACTION_REQUIRED", message: "MongoDB transaction yêu cầu replica set hoặc MongoDB Atlas." } }, { status: 503 });
   if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) return Response.json({ success: false, error: { code: "DUPLICATE_RESOURCE", message: "Tài nguyên đã tồn tại." } }, { status: 409 });
-  console.error(error);
-  return Response.json({ success: false, error: { code: "INTERNAL_ERROR", message: "Đã xảy ra lỗi máy chủ." } }, { status: 500 });
+  console.error(error); return Response.json({ success: false, error: { code: "INTERNAL_ERROR", message: "Đã xảy ra lỗi máy chủ." } }, { status: 500 });
 }
 
-export async function parseJson(request: Request): Promise<unknown> {
-  try { return await request.json(); } catch { throw new ApiError("VALIDATION_ERROR", "JSON không hợp lệ."); }
-}
-
-export function parseObjectId(value: string, field = "id"): ObjectId {
-  if (!ObjectId.isValid(value)) throw new ApiError("INVALID_OBJECT_ID", `${field} không hợp lệ.`);
-  return new ObjectId(value);
-}
+export async function parseJson(request: Request): Promise<unknown> { try { return await request.json(); } catch { throw new ApiError("VALIDATION_ERROR", "JSON không hợp lệ."); } }
+export function parseObjectId(value: string, field = "id"): ObjectId { if (!ObjectId.isValid(value)) throw new ApiError("INVALID_OBJECT_ID", `${field} không hợp lệ.`); return new ObjectId(value); }

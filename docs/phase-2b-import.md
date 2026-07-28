@@ -4,19 +4,21 @@ Phase 2B implements backend-only JSON and structured-text question import. The f
 
 ## Limits and request
 
-`POST /api/questions/import/validate` accepts `{ subjectId, targetExamSetIds, inputFormat, content, fileName?, options? }`. The content limit is 5MB, each job is limited to 500 items, and stored issues are capped at 2,000. JSON can be an array or `{ questions: [] }`; code fences are not accepted. Structured text uses `[QUESTION]` blocks, case-insensitive fields, `A:`–`H:` options and `1: text | TRUE` statements.
+`POST /api/questions/import/validate` accepts `{ subjectId, targetExamSetIds, inputFormat, content, fileName?, options? }`. The content limit is 5MB and each request is limited to 500 items. Inputs over 500 items return `IMPORT_TOO_LARGE` before an import job is created. JSON can be an array or `{ questions: [] }`; code fences are not accepted. Structured text uses `[QUESTION]` blocks, case-insensitive fields, `A:`–`H:` options and `1: text | TRUE` statements. Unrecognized lines produce bounded `UNRECOGNIZED_LINE` issues with their block line number.
+
+The import defaults support `draft`/`published`, difficulty and all translation statuses: `not_required`, `pending`, `translated`, `reviewed` and `failed`. An item-level value takes precedence over its default.
 
 ## Duplicate policy
 
-The default is `reject`; `skip` turns duplicates into skipped warnings; `allow` imports duplicates and never stores `allowDuplicate` in questions. Duplicate detection uses the Phase 2A `createQuestionContentHash` function and checks both the current batch and MongoDB.
+The default is `reject`; `skip` turns duplicates into skipped warnings; `allow` imports duplicates and never stores `allowDuplicate` in questions. Duplicate detection uses the Phase 2A `createQuestionContentHash` function, checks the current batch, and performs one database lookup for all unique candidate hashes.
 
 ## Job lifecycle
 
-Jobs move `ready → importing → completed` through an atomic token-protected claim. `GET` never returns the confirm token or raw source content. Confirm reads the stored preview, not client-supplied questions. Repeated confirm after completion returns the previous result without inserting or incrementing counts. Cancel is allowed for `ready` and `failed`, is idempotent, and never deletes a job.
+Jobs move `ready → importing → completed` through an atomic token-protected claim. Parse errors and imports with no valid items return an error before creating a `ready` job. `GET` never returns the confirm token or raw source content. Confirm reads the stored preview, not client-supplied questions. Repeated confirm after completion returns the previous result without inserting or incrementing counts. Cancel is allowed for `ready` and `failed`, is idempotent, and never deletes a job.
 
 ## Transactions
 
-Confirm uses the shared MongoDB session helper for question inserts, exam-set count updates and job completion. A standalone local MongoDB cannot support this transaction; use MongoDB Atlas or a local replica set. No non-transaction fallback is used for confirm, so unsupported deployments return an error rather than leaving partial data.
+Confirm uses the shared MongoDB session helper for question inserts, exam-set count updates and job completion. A standalone local MongoDB cannot support this transaction; use MongoDB Atlas or a local replica set. No non-transaction fallback is used for confirm, so unsupported deployments return HTTP 503 with `TRANSACTION_REQUIRED` rather than leaving partial data.
 
 ## Supported and deferred formats
 

@@ -35,7 +35,7 @@ export interface QuestionDocument {
   status: QuestionStatus;
   contentHash: string;
   source?: { name?: string; externalId?: string };
-  translationStatus?: "original_only" | "translated" | "reviewed";
+  translationStatus?: "original_only" | "not_required" | "pending" | "translated" | "reviewed" | "failed";
   createdAt: Date;
   updatedAt: Date;
 }

@@ -12,24 +12,47 @@ import type { ImportPreviewItem, QuestionImportJobDocument } from "./question-im
 import { validateImportItems } from "./import-validator";
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
-const publicItem = (item: ImportPreviewItem) => { const question = item.normalizedQuestion as { type?: string; content?: unknown; options?: unknown[]; statements?: unknown[]; difficulty?: string; tags?: string[] } | undefined; return { itemIndex: item.itemIndex, questionNumber: item.questionNumber, status: item.status, contentHash: item.contentHash, duplicateQuestionId: item.duplicateQuestionId, preview: question ? { type: question.type, content: question.content, optionCount: question.options?.length, statementCount: question.statements?.length, difficulty: question.difficulty, tags: question.tags ?? [] } : undefined, issues: item.issues }; };
+const publicItem = (item: ImportPreviewItem) => {
+  const question = item.normalizedQuestion as { type?: string; content?: unknown; options?: unknown[]; statements?: unknown[]; difficulty?: string; tags?: string[] } | undefined;
+  return { itemIndex: item.itemIndex, questionNumber: item.questionNumber, status: item.status, contentHash: item.contentHash, duplicateQuestionId: item.duplicateQuestionId, preview: question ? { type: question.type, content: question.content, optionCount: question.options?.length, statementCount: question.statements?.length, difficulty: question.difficulty, tags: question.tags ?? [] } : undefined, issues: item.issues };
+};
 
 export class QuestionImportService {
   constructor(private readonly jobs: QuestionImportRepository, private readonly subjects = getCollection("subjects"), private readonly examSets = getCollection("exam_sets"), private readonly questions = getCollection("questions")) {}
 
   private async validateRelations(subjectId: ObjectId, targetExamSetIds: ObjectId[]) {
-    const subject = await (await this.subjects).findOne({ _id: subjectId }); if (!subject) throw new ApiError("INVALID_RELATION", "Subject không tồn tại."); if (!subject.isActive) throw new ApiError("CONFLICT", "Subject đã bị vô hiệu hóa.");
-    const sets = await (await this.examSets).find({ _id: { $in: targetExamSetIds } }).toArray(); if (sets.length !== targetExamSetIds.length) throw new ApiError("INVALID_RELATION", "Một hoặc nhiều exam set không tồn tại."); if (sets.some((set) => !set.subjectId.equals(subjectId))) throw new ApiError("INVALID_RELATION", "Exam sets phải cùng subject."); if (sets.some((set) => set.status === "archived")) throw new ApiError("CONFLICT", "Không thể import vào exam set archived.");
+    const subject = await (await this.subjects).findOne({ _id: subjectId });
+    if (!subject) throw new ApiError("INVALID_RELATION", "Subject không tồn tại.");
+    if (!subject.isActive) throw new ApiError("CONFLICT", "Subject đã bị vô hiệu hóa.");
+    const sets = await (await this.examSets).find({ _id: { $in: targetExamSetIds } }).toArray();
+    if (sets.length !== targetExamSetIds.length) throw new ApiError("INVALID_RELATION", "Một hoặc nhiều exam set không tồn tại.");
+    if (sets.some((set) => !set.subjectId.equals(subjectId))) throw new ApiError("INVALID_RELATION", "Exam sets phải cùng subject.");
+    if (sets.some((set) => set.status === "archived")) throw new ApiError("CONFLICT", "Không thể import vào exam set archived.");
   }
 
   async validate(input: unknown) {
-    const request = validateImportRequestSchema.parse(input); if (Buffer.byteLength(request.content, "utf8") > MAX_IMPORT_BYTES) throw new ApiError("IMPORT_TOO_LARGE", "Nội dung import vượt quá 5MB.", undefined, 413);
-    const subjectId = parseObjectId(request.subjectId, "subjectId"); const targetExamSetIds = request.targetExamSetIds.map((id) => parseObjectId(id, "examSetId")); await this.validateRelations(subjectId, targetExamSetIds);
-    const parsed = request.inputFormat === "json" ? parseJsonImport(request.content) : parseStructuredText(request.content); const rootIssues = "rootIssues" in parsed ? parsed.rootIssues : parsed.rootIssue ? [parsed.rootIssue] : [];
-    const limitIssues = parsed.items.length > MAX_IMPORT_ITEMS ? [{ code: "TOO_MANY_ITEMS", message: `Mỗi import job tối đa ${MAX_IMPORT_ITEMS} câu hỏi.`, severity: "error" as const }] : []; const items = parsed.items.slice(0, MAX_IMPORT_ITEMS); const allRootIssues = [...rootIssues, ...limitIssues]; const previews = allRootIssues.length ? [] : await validateImportItems(items, request.subjectId, request.targetExamSetIds, request.options, request.options.duplicatePolicy, await this.questions);
-    const issues = [...allRootIssues, ...previews.flatMap((item) => item.issues)].slice(0, 2000); const validItems = previews.filter((item) => item.status === "valid").length; const invalidItems = previews.filter((item) => item.status === "invalid").length; const duplicateItems = previews.filter((item) => item.status === "duplicate_in_batch" || item.status === "duplicate_in_database").length; const skippedItems = previews.filter((item) => item.status === "skipped").length; const blockingDuplicate = previews.some((item) => item.status === "duplicate_in_batch" || item.status === "duplicate_in_database");
-    const confirmToken = randomUUID() + randomUUID(); const now = new Date(); const document: Omit<QuestionImportJobDocument, "_id"> = { subjectId, targetExamSetIds, inputFormat: request.inputFormat, fileName: request.fileName, duplicatePolicy: request.options.duplicatePolicy, status: "ready", totalItems: parsed.items.length, validItems, invalidItems, duplicateItems, skippedItems, importedItems: 0, issues, previewItems: previews, createdQuestionIds: [], confirmTokenHash: tokenHash(confirmToken), createdAt: now, updatedAt: now };
-    const result = await this.jobs.create(document); return { jobId: result.insertedId.toHexString(), confirmToken, status: "ready" as const, summary: { totalItems: document.totalItems, validItems, invalidItems, duplicateItems, skippedItems, canConfirm: validItems > 0 && !blockingDuplicate }, items: previews.map(publicItem) };
+    const request = validateImportRequestSchema.parse(input);
+    if (Buffer.byteLength(request.content, "utf8") > MAX_IMPORT_BYTES) throw new ApiError("IMPORT_TOO_LARGE", "Nội dung import vượt quá 5MB.", undefined, 413);
+    const subjectId = parseObjectId(request.subjectId, "subjectId");
+    const targetExamSetIds = request.targetExamSetIds.map((id) => parseObjectId(id, "examSetId"));
+    await this.validateRelations(subjectId, targetExamSetIds);
+    const parsed = request.inputFormat === "json" ? parseJsonImport(request.content) : parseStructuredText(request.content);
+    if (parsed.items.length > MAX_IMPORT_ITEMS) throw new ApiError("IMPORT_TOO_LARGE", `Mỗi import job tối đa ${MAX_IMPORT_ITEMS} câu hỏi.`, undefined, 413);
+    const rootIssues = "rootIssues" in parsed ? parsed.rootIssues : parsed.rootIssue ? [parsed.rootIssue] : [];
+    if (rootIssues.length) throw new ApiError("IMPORT_PARSE_ERROR", "Không thể parse nội dung import.", { issues: rootIssues }, 422);
+    const previews = await validateImportItems(parsed.items, request.subjectId, request.targetExamSetIds, request.options, request.options.duplicatePolicy, await this.questions);
+    const issues = previews.flatMap((item) => item.issues).slice(0, 2000);
+    const validItems = previews.filter((item) => item.status === "valid").length;
+    const invalidItems = previews.filter((item) => item.status === "invalid").length;
+    const duplicateItems = previews.filter((item) => item.status === "duplicate_in_batch" || item.status === "duplicate_in_database").length;
+    const skippedItems = previews.filter((item) => item.status === "skipped").length;
+    if (validItems === 0) throw new ApiError("IMPORT_NO_VALID_ITEMS", "Import không có câu hỏi hợp lệ để xem trước.", { issues }, 422);
+    const blockingDuplicate = previews.some((item) => ["duplicate_in_batch", "duplicate_in_database"].includes(item.status));
+    const confirmToken = randomUUID() + randomUUID();
+    const now = new Date();
+    const document: Omit<QuestionImportJobDocument, "_id"> = { subjectId, targetExamSetIds, inputFormat: request.inputFormat, fileName: request.fileName, duplicatePolicy: request.options.duplicatePolicy, status: "ready", totalItems: parsed.items.length, validItems, invalidItems, duplicateItems, skippedItems, importedItems: 0, issues, previewItems: previews, createdQuestionIds: [], confirmTokenHash: tokenHash(confirmToken), createdAt: now, updatedAt: now };
+    const result = await this.jobs.create(document);
+    return { jobId: result.insertedId.toHexString(), confirmToken, status: "ready" as const, summary: { totalItems: document.totalItems, validItems, invalidItems, duplicateItems, skippedItems, canConfirm: validItems > 0 && !blockingDuplicate }, items: previews.map(publicItem) };
   }
 
   async get(id: ObjectId) { const job = await this.jobs.findById(id); if (!job) throw new ApiError("NOT_FOUND", "Import job không tồn tại."); return { jobId: job._id.toHexString(), status: job.status, summary: { totalItems: job.totalItems, validItems: job.validItems, invalidItems: job.invalidItems, duplicateItems: job.duplicateItems, skippedItems: job.skippedItems, importedItems: job.importedItems }, items: job.previewItems.map(publicItem), createdQuestionIds: job.createdQuestionIds.map((item) => item.toHexString()) }; }
