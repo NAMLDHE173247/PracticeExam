@@ -1,4 +1,4 @@
-import type { ExamAttemptDocument } from "../exam-attempts/exam-attempt.types";
+import type { ExamAttemptDocument, ExamResultItemSnapshot } from "../exam-attempts/exam-attempt.types";
 import { ApiError } from "../../lib/api/response";
 
 export function serializeResult(attempt: ExamAttemptDocument) {
@@ -14,17 +14,54 @@ export function serializeResult(attempt: ExamAttemptDocument) {
     throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không khả dụng cho lượt làm bài này (có thể do được nộp trước khi hệ thống cập nhật phiên bản).");
   }
 
-  const { items, questions: legacyQuestions, summary, generatedAt } = attempt.resultSnapshot;
+  const { version, summary, generatedAt } = attempt.resultSnapshot;
   
+  if (summary.totalQuestions !== attempt.questionSnapshots.length || attempt.answerKeySnapshots.length !== attempt.questionSnapshots.length) {
+    throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Số lượng câu hỏi không khớp.");
+  }
+
+  if (summary.correctCount + summary.partiallyCorrectCount + summary.incorrectCount + summary.unansweredCount !== summary.totalQuestions) {
+    throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Tổng số câu trả lời không khớp.");
+  }
+
+  if (summary.correctCount !== attempt.correctCount || summary.partiallyCorrectCount !== attempt.partiallyCorrectCount || summary.incorrectCount !== attempt.incorrectCount || summary.unansweredCount !== attempt.unansweredCount) {
+    throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Summary counts không khớp với root attempt.");
+  }
+
+  if (summary.score !== attempt.score) {
+    throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Điểm số không khớp với root attempt.");
+  }
+
   let mergedQuestions: any[] = [];
 
-  if (items) {
-    if (items.length !== attempt.questionSnapshots.length || attempt.answerKeySnapshots.length !== attempt.questionSnapshots.length || summary.totalQuestions !== attempt.questionSnapshots.length) {
-      throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Số lượng câu hỏi không khớp.");
+  if (version === 2 && attempt.resultSnapshot.items) {
+    const items = attempt.resultSnapshot.items;
+    if (items.length !== attempt.questionSnapshots.length) {
+      throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Số lượng result items không khớp.");
     }
-    
-    if (summary.correctCount + summary.partiallyCorrectCount + summary.incorrectCount + summary.unansweredCount !== summary.totalQuestions) {
-      throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Tổng số câu trả lời không khớp.");
+
+    let derivedCorrect = 0, derivedPartial = 0, derivedIncorrect = 0, derivedUnanswered = 0;
+    let derivedEarned = 0, derivedMax = 0;
+
+    for (const item of items) {
+      if (item.result.earnedScore < 0 || item.result.earnedScore > item.result.maxScore) {
+        throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", `Dữ liệu kết quả không hợp lệ: Điểm số câu hỏi không hợp lệ (${item.result.earnedScore}/${item.result.maxScore}).`);
+      }
+      derivedEarned += item.result.earnedScore;
+      derivedMax += item.result.maxScore;
+
+      if (item.result.status === "correct") derivedCorrect++;
+      else if (item.result.status === "partial") derivedPartial++;
+      else if (item.result.status === "incorrect") derivedIncorrect++;
+      else derivedUnanswered++;
+    }
+
+    if (derivedCorrect !== summary.correctCount || derivedPartial !== summary.partiallyCorrectCount || derivedIncorrect !== summary.incorrectCount || derivedUnanswered !== summary.unansweredCount) {
+      throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Trạng thái câu trả lời không khớp với summary.");
+    }
+
+    if (derivedEarned !== attempt.totalEarnedPoints || derivedMax !== attempt.totalMaxPoints) {
+      throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ: Tổng điểm không khớp với root attempt.");
     }
 
     mergedQuestions = attempt.questionSnapshots.map(snapshot => {
@@ -55,7 +92,8 @@ export function serializeResult(attempt: ExamAttemptDocument) {
         ...(snapshot.originExamSetId ? { originExamSetId: snapshot.originExamSetId.toHexString() } : {}),
       };
     });
-  } else if (legacyQuestions) {
+  } else if ((!version || version === 1) && attempt.resultSnapshot.questions) {
+    const legacyQuestions = attempt.resultSnapshot.questions;
     if (legacyQuestions.length !== attempt.questionSnapshots.length) {
       throw new ApiError("RESULT_SNAPSHOT_UNAVAILABLE", "Dữ liệu kết quả không hợp lệ (Legacy): Số lượng câu hỏi không khớp.");
     }

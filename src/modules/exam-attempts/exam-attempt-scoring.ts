@@ -20,6 +20,29 @@ function gradeQuestion(attempt: ExamAttemptDocument, key: ExamAttemptAnswerKey, 
 }
 
 export function scoreAttempt(attempt: ExamAttemptDocument, answers: UserAnswerDocument[]) {
+  const questionIds = attempt.questionSnapshots.map(s => s.questionId.toHexString());
+  const answerKeyIds = attempt.answerKeySnapshots.map(k => k.questionId.toHexString());
+
+  if (questionIds.length !== answerKeyIds.length) {
+    throw new Error(`Invariant failed: questionSnapshots length (${questionIds.length}) does not match answerKeySnapshots length (${answerKeyIds.length})`);
+  }
+
+  const uniqueQuestionIds = new Set(questionIds);
+  if (uniqueQuestionIds.size !== questionIds.length) {
+    throw new Error(`Invariant failed: Duplicate questionIds found in questionSnapshots`);
+  }
+
+  const uniqueAnswerKeyIds = new Set(answerKeyIds);
+  if (uniqueAnswerKeyIds.size !== answerKeyIds.length) {
+    throw new Error(`Invariant failed: Duplicate questionIds found in answerKeySnapshots`);
+  }
+
+  for (const id of uniqueQuestionIds) {
+    if (!uniqueAnswerKeyIds.has(id)) {
+      throw new Error(`Invariant failed: questionId ${id} is missing from answerKeySnapshots`);
+    }
+  }
+
   const answerMap = new Map(answers.map((answer) => [answer.questionId.toHexString(), answer]));
   let totalEarnedPoints = 0;
   let correctCount = 0;

@@ -38,6 +38,32 @@ export interface ExamResultItemSnapshot {
   };
 }
 
+export type ExamResultSnapshotSummary = {
+  score: number;
+  scoreScale: 10;
+  correctCount: number;
+  partiallyCorrectCount: number;
+  incorrectCount: number;
+  unansweredCount: number;
+  totalQuestions: number;
+};
+
+export type ExamResultSnapshot = 
+  | {
+      version: 2;
+      items: ExamResultItemSnapshot[];
+      questions?: never;
+      generatedAt: Date;
+      summary: ExamResultSnapshotSummary;
+    }
+  | {
+      version?: 1;
+      items?: never;
+      questions: any[]; // Legacy format
+      generatedAt: Date;
+      summary: ExamResultSnapshotSummary;
+    };
+
 export interface ExamAttemptSettings {
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
@@ -71,20 +97,7 @@ export interface ExamAttemptDocument {
   totalEarnedPoints?: number;
   totalMaxPoints?: number;
   settings: ExamAttemptSettings;
-  resultSnapshot?: {
-    items?: ExamResultItemSnapshot[]; // new compacted format
-    questions?: any[]; // legacy format
-    generatedAt: Date;
-    summary: {
-      score: number;
-      scoreScale: 10;
-      correctCount: number;
-      partiallyCorrectCount: number;
-      incorrectCount: number;
-      unansweredCount: number;
-      totalQuestions: number;
-    };
-  };
+  resultSnapshot?: ExamResultSnapshot;
   createdAt: Date;
   updatedAt: Date;
 }

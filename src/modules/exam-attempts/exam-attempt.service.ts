@@ -174,6 +174,7 @@ export class ExamAttemptService {
     const status = now >= attempt.deadlineAt ? "expired" : "submitted";
     
     const resultSnapshot: ExamAttemptDocument["resultSnapshot"] = {
+      version: 2,
       generatedAt: now,
       summary: {
         score: scored.score,

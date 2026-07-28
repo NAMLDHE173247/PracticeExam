@@ -24,7 +24,7 @@ const question = {
 
 function makeAttempt(overrides: Partial<ExamAttemptDocument> = {}): ExamAttemptDocument {
   const now = new Date();
-  const snapshot = createAttemptSnapshot(question, 0, false);
+  const snapshot = createAttemptSnapshot(question, 0, false, undefined, [examSetId]);
   return {
     _id: new ObjectId(), userId: new ObjectId(), mode: "exam_set", subjectId, examSetId, sourceExamSetIds: [examSetId], questionIds: [questionId],
     questionSnapshots: [snapshot], answerKeySnapshots: [createAnswerKeySnapshot(question)], durationSeconds: 3600, status: "in_progress",
@@ -48,7 +48,7 @@ describe("Phase 3A selection, snapshots and scoring", () => {
 
   it("creates a client snapshot without answer correctness and a separate answer key", () => {
     const mutableQuestion = { ...question, content: { ...question.content }, options: question.options.map((option) => ({ ...option, content: { ...option.content } })) };
-    const snapshot = createAttemptSnapshot(mutableQuestion, 0, true, () => 0);
+    const snapshot = createAttemptSnapshot(mutableQuestion, 0, true, () => 0, [examSetId]);
     const key = createAnswerKeySnapshot(mutableQuestion);
     mutableQuestion.content.original = "Changed after create";
     mutableQuestion.options[0].content.original = "Changed option";
@@ -73,7 +73,7 @@ describe("Phase 3A selection, snapshots and scoring", () => {
 
   it("grades true/false groups strictly and partially", () => {
     const statementQuestion = { ...question, type: "true_false_group" as const, options: undefined, statements: [{ id: "S1", content: { original: "One" }, answer: true }, { id: "S2", content: { original: "Two" }, answer: false }] };
-    const statementAttempt = makeAttempt({ questionSnapshots: [createAttemptSnapshot(statementQuestion, 0, false)], answerKeySnapshots: [createAnswerKeySnapshot(statementQuestion)] });
+    const statementAttempt = makeAttempt({ questionSnapshots: [createAttemptSnapshot(statementQuestion, 0, false, undefined, [examSetId])], answerKeySnapshots: [createAnswerKeySnapshot(statementQuestion)] });
     const strict = scoreAttempt({ ...statementAttempt, settings: { ...statementAttempt.settings, scoringMode: "strict" } }, [{ _id: new ObjectId(), attemptId: new ObjectId(), userId: new ObjectId(), questionId, questionType: "true_false_group", statementAnswers: [{ statementId: "S1", answer: true }, { statementId: "S2", answer: true }], answeredAt: new Date(), updatedAt: new Date() }]);
     const partial = scoreAttempt(statementAttempt, [{ _id: new ObjectId(), attemptId: new ObjectId(), userId: new ObjectId(), questionId, questionType: "true_false_group", statementAnswers: [{ statementId: "S1", answer: true }], answeredAt: new Date(), updatedAt: new Date() }]);
     expect(strict.score).toBe(0);
