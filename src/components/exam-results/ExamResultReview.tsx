@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { createExamAttempt } from "../../lib/api/exam-attempt-client";
+import { useTemporaryUser } from "@/hooks/use-temporary-user";
 import type { SerializedExamResult } from "../../lib/api/exam-result-client";
 import { ResultQuestionReview } from "./ResultQuestionReview";
 import { statusMap, type ResultFilter, uiIcons } from "./result-status";
@@ -11,7 +13,31 @@ interface ExamResultReviewProps {
 
 export function ExamResultReview({ result }: ExamResultReviewProps) {
   const router = useRouter();
+  const identity = useTemporaryUser();
   const [filter, setFilter] = useState<ResultFilter>("all");
+  const [isRetaking, setIsRetaking] = useState(false);
+  const [includeUnanswered, setIncludeUnanswered] = useState(true);
+  const [retakeError, setRetakeError] = useState("");
+  
+  const handleRetake = async (mode: "full" | "incorrect_only") => {
+    if (!identity.isValid) return;
+    setIsRetaking(true);
+    setRetakeError("");
+    try {
+      const res = await createExamAttempt({
+        userId: identity.userId,
+        mode: "retake",
+        sourceAttemptId: result.attemptId,
+        retakeMode: mode,
+        includeUnanswered,
+        settings: result.settings
+      });
+      router.push(`/exam/${res.attempt.id}`);
+    } catch (e) {
+      setRetakeError(e instanceof Error ? e.message : "Có lỗi xảy ra khi tạo lượt làm lại.");
+      setIsRetaking(false);
+    }
+  };
   
   const showTranslation = result.settings.showTranslation;
   const questions = useMemo(() => {
@@ -130,20 +156,34 @@ export function ExamResultReview({ result }: ExamResultReviewProps) {
       </section>
 
       <div className={styles.actions}>
-        <button 
-          className={styles.secondaryButton} 
-          onClick={() => router.push("/exam/setup")}
-        >
-          Thi lại / Chọn đề khác
-        </button>
-        
-        <button 
-          className={styles.primaryButton}
-          disabled
-          title="Sắp có trong Phase 4"
-        >
-          Luyện lại câu chưa đúng (Phase 4)
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+          <button 
+            className={styles.secondaryButton} 
+            onClick={() => handleRetake("full")}
+            disabled={isRetaking}
+          >
+            Làm lại toàn bộ đề
+          </button>
+          
+          <button 
+            className={styles.primaryButton}
+            onClick={() => handleRetake("incorrect_only")}
+            disabled={isRetaking || (counts.incorrect + counts.partial === 0 && (!includeUnanswered || counts.unanswered === 0))}
+          >
+            Làm lại câu sai
+          </button>
+          
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", color: "#555" }}>
+            <input 
+              type="checkbox" 
+              checked={includeUnanswered} 
+              onChange={(e) => setIncludeUnanswered(e.target.checked)} 
+              disabled={isRetaking}
+            />
+            Bao gồm câu chưa trả lời
+          </label>
+        </div>
+        {retakeError && <div style={{ color: "#a04444", fontSize: "14px", marginTop: "10px" }}>{retakeError}</div>}
       </div>
     </div>
   );

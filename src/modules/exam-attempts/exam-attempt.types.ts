@@ -1,7 +1,7 @@
 import type { ObjectId } from "mongodb";
 import type { LocalizedText, QuestionType } from "../questions/question.types";
 
-export type ExamMode = "exam_set" | "mixed";
+export type ExamMode = "exam_set" | "mixed" | "retake";
 export type AttemptStatus = "in_progress" | "submitting" | "submitted" | "expired" | "abandoned";
 export type SubmitReason = "manual" | "timeout";
 

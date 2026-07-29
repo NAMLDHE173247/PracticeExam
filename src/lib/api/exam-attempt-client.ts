@@ -50,7 +50,8 @@ export { ApiClientError as ExamAttemptClientError };
 
 export type CreateAttemptInput =
   | { userId: string; mode: "exam_set"; examSetId: string; settings: AttemptSettings }
-  | { userId: string; mode: "mixed"; subjectId: string; sourceExamSetIds: string[]; questionCount: number; durationMinutes: number; settings: AttemptSettings };
+  | { userId: string; mode: "mixed"; subjectId: string; sourceExamSetIds: string[]; questionCount: number; durationMinutes: number; settings: AttemptSettings }
+  | { userId: string; mode: "retake"; sourceAttemptId: string; retakeMode: "full" | "incorrect_only"; includeUnanswered: boolean; settings: AttemptSettings };
 
 export function createExamAttempt(input: CreateAttemptInput, signal?: AbortSignal) {
   return requestJson<{ attempt: ExamAttempt }>("/api/exam-attempts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal });

@@ -10,6 +10,14 @@ const settings = z.object({
 }).optional();
 
 export const createExamAttemptSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("retake"),
+    userId: objectId,
+    sourceAttemptId: objectId,
+    retakeMode: z.enum(["full", "incorrect_only"]),
+    includeUnanswered: z.boolean().default(true),
+    settings,
+  }),
   z.object({ mode: z.literal("exam_set"), userId: objectId, examSetId: objectId, settings }),
   z.object({
     mode: z.literal("mixed"),

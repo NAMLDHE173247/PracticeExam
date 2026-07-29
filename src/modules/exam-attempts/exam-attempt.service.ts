@@ -66,16 +66,55 @@ export class ExamAttemptService {
     let subjectId: ObjectId;
     let examSetId: ObjectId | undefined;
     let sourceExamSetIds: ObjectId[];
-    let questions: QuestionDocument[];
     let durationMinutes: number;
+    let sourceAttemptId: ObjectId | undefined;
+    let questionSnapshots: ExamAttemptDocument["questionSnapshots"];
+    let answerKeySnapshots: ExamAttemptDocument["answerKeySnapshots"];
+    let finalQuestionIds: ObjectId[];
 
-    if (value.mode === "exam_set") {
+    if (value.mode === "retake") {
+      sourceAttemptId = parseObjectId(value.sourceAttemptId, "sourceAttemptId");
+      const sourceAttempt = await this.ownedAttempt(sourceAttemptId, userId);
+      if (sourceAttempt.status !== "submitted" && sourceAttempt.status !== "expired") {
+        throw new ApiError("VALIDATION_ERROR", "Lượt làm bài nguồn chưa kết thúc.");
+      }
+      if (!sourceAttempt.resultSnapshot) throw new ApiError("VALIDATION_ERROR", "Lượt làm bài chưa có kết quả.");
+      
+      subjectId = sourceAttempt.subjectId;
+      examSetId = sourceAttempt.examSetId;
+      sourceExamSetIds = sourceAttempt.sourceExamSetIds;
+      durationMinutes = Math.round(sourceAttempt.durationSeconds / 60) || DEFAULT_DURATION_MINUTES;
+      
+      let targetQuestionIds: string[] = [];
+      if (value.retakeMode === "full") {
+        targetQuestionIds = sourceAttempt.questionIds.map(id => id.toHexString());
+      } else {
+        for (const item of sourceAttempt.resultSnapshot.items || []) {
+          if (item.result.status === "incorrect" || item.result.status === "partial") {
+            targetQuestionIds.push(item.questionId.toHexString());
+          } else if (value.includeUnanswered && item.result.status === "unanswered") {
+            targetQuestionIds.push(item.questionId.toHexString());
+          }
+        }
+      }
+      
+      if (targetQuestionIds.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "Không có câu hỏi nào phù hợp để làm lại.");
+      
+      const targetQuestionIdsSet = new Set(targetQuestionIds);
+      finalQuestionIds = sourceAttempt.questionIds.filter(id => targetQuestionIdsSet.has(id.toHexString()));
+      questionSnapshots = sourceAttempt.questionSnapshots.filter(s => targetQuestionIdsSet.has(s.questionId.toHexString()));
+      answerKeySnapshots = sourceAttempt.answerKeySnapshots.filter(s => targetQuestionIdsSet.has(s.questionId.toHexString()));
+    } else if (value.mode === "exam_set") {
       examSetId = parseObjectId(value.examSetId, "examSetId");
       const examSet = await this.publishedExamSet(examSetId);
       subjectId = examSet.subjectId;
       sourceExamSetIds = [examSet._id];
       durationMinutes = examSet.durationMinutes ?? DEFAULT_DURATION_MINUTES;
-      questions = await selectExamSetQuestions(this.questions, examSet, settings.shuffleQuestions);
+      const questions = await selectExamSetQuestions(this.questions, examSet, settings.shuffleQuestions);
+      if (questions.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "KhA'ng cA3 cAu h?i hp l.");
+      finalQuestionIds = questions.map((q) => q._id);
+      questionSnapshots = questions.map((q, index) => createAttemptSnapshot(q, index, settings.shuffleOptions, undefined, sourceExamSetIds));
+      answerKeySnapshots = questions.map(createAnswerKeySnapshot);
     } else {
       subjectId = parseObjectId(value.subjectId, "subjectId");
       await this.activeSubject(subjectId);
@@ -85,18 +124,20 @@ export class ExamAttemptService {
       if (sourceSets.some((set) => !set.subjectId.equals(subjectId))) throw new ApiError("INVALID_RELATION", "Bộ đề nguồn phải thuộc môn đã chọn.");
       if (sourceSets.some((set) => set.status !== "published")) throw new ApiError("EXAM_SET_NOT_PUBLISHED", "Tất cả bộ đề nguồn phải được publish.");
       durationMinutes = value.durationMinutes;
-      questions = await selectMixedQuestions(this.questions, subjectId, sourceExamSetIds, value.questionCount, settings.shuffleQuestions);
+      const questions = await selectMixedQuestions(this.questions, subjectId, sourceExamSetIds, value.questionCount, settings.shuffleQuestions);
+      if (questions.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "KhA'ng cA3 cAu h?i hp l.");
+      finalQuestionIds = questions.map((q) => q._id);
+      questionSnapshots = questions.map((q, index) => createAttemptSnapshot(q, index, settings.shuffleOptions, undefined, sourceExamSetIds));
+      answerKeySnapshots = questions.map(createAnswerKeySnapshot);
     }
-    if (questions.length === 0) throw new ApiError("ATTEMPT_NO_QUESTIONS", "Không có câu hỏi hợp lệ.");
 
-    const questionSnapshots = questions.map((question, index) => createAttemptSnapshot(question, index, settings.shuffleOptions, undefined, sourceExamSetIds));
-    const answerKeySnapshots = questions.map(createAnswerKeySnapshot);
     const startedAt = new Date();
     const deadlineAt = new Date(startedAt.getTime() + durationMinutes * 60 * 1000);
     const now = new Date();
     const document: Omit<ExamAttemptDocument, "_id"> = {
       userId, mode: value.mode, subjectId, ...(examSetId ? { examSetId } : {}), sourceExamSetIds,
-      questionIds: questions.map((question) => question._id), questionSnapshots, answerKeySnapshots,
+      ...(sourceAttemptId ? { sourceAttemptId } : {}),
+      questionIds: finalQuestionIds, questionSnapshots, answerKeySnapshots,
       durationSeconds: durationMinutes * 60, status: "in_progress", startedAt, deadlineAt,
       lastSavedAt: now, scoreScale: 10, settings, createdAt: now, updatedAt: now,
     };
