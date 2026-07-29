@@ -50,8 +50,8 @@ export function SidebarLayout({ children }: { children: ReactNode }) {
             <span className="link-text">{LABELS.SUBJECTS}</span>
           </Link>
           <Link
-            className={`sidebar-nav-link`}
-            href="/#analytics"
+            className={`sidebar-nav-link ${pathname.startsWith("/analytics") ? "active" : ""}`}
+            href="/analytics"
           >
             <span aria-hidden="true">▥</span>
             <span className="link-text">{LABELS.ANALYTICS}</span>

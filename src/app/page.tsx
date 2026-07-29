@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTemporaryUser } from "@/hooks/use-temporary-user";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { LABELS } from "@/lib/constants/labels";
 
@@ -56,6 +57,7 @@ function accentFromSubjectCode(code: string) {
 
 export default function Dashboard() {
   const router = useRouter();
+  const identity = useTemporaryUser();
   const [examSets, setExamSets] = useState<ExamSet[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("ALL");
@@ -237,18 +239,18 @@ export default function Dashboard() {
   }
 
   async function startExam(examSetId: string) {
+    if (!identity.isValid) {
+      alert("Vui lòng vào trang Thiết lập thi để tạo/nhập User ID tạm thời trước khi làm bài.");
+      router.push("/exam/setup");
+      return;
+    }
     try {
-      let currentUserId = window.localStorage.getItem("practice_exam_temporary_user_id");
-      if (!currentUserId || !/^[a-f\d]{24}$/i.test(currentUserId)) {
-        currentUserId = "65abcdef1234567890abcdef";
-        window.localStorage.setItem("practice_exam_temporary_user_id", currentUserId);
-      }
       const res = await fetch("/api/exam-attempts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "exam_set",
-          userId: currentUserId,
+          userId: identity.userId,
           examSetId: examSetId
         })
       });
