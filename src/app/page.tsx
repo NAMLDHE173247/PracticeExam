@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { LABELS } from "@/lib/constants/labels";
 
@@ -341,7 +342,7 @@ export default function Home() {
                     const statusLabel = examSet.status === "published" ? LABELS.PUBLISHED : LABELS.DRAFT;
                     return (
                       <tr key={examSet._id}>
-                        <td><div className="set-title"><span className={`set-icon ${accent}`}>Q</span><strong>{examSet.title}</strong></div></td>
+                        <td><div className="set-title"><span className={`set-icon ${accent}`}>Q</span><Link href={`/exam-sets/${examSet._id}`}><strong>{examSet.title}</strong></Link></div></td>
                         <td><span className={`subject-tag ${accent}`}>{subjectCode}</span></td>
                         <td>{examSet.durationMinutes ? `${examSet.durationMinutes}p` : "—"}</td>
                         <td><span className="question-count">{examSet.questionCount}</span></td>
