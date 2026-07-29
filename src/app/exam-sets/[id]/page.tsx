@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, FormEvent, use, useMemo } from "react";
+import { useEffect, useState, FormEvent, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { LABELS } from "@/lib/constants/labels";
@@ -37,6 +37,22 @@ type ApiSuccess<T> = {
   data: T;
 };
 
+type ImportValidationResult = {
+  jobId: string;
+  confirmToken: string;
+  summary: {
+    validItems: number;
+    invalidItems: number;
+    totalItems: number;
+    canConfirm: boolean;
+  };
+  items: Array<{
+    itemIndex: number;
+    status: string;
+    issues: Array<{ message: string }>;
+  }>;
+};
+
 export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const examSetId = resolvedParams.id;
@@ -55,33 +71,53 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
   const [qOptions, setQOptions] = useState<Option[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Import JSON states
+  const [isImporting, setIsImporting] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [importResult, setImportResult] = useState<ImportValidationResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [examSetRes, questionsRes] = await Promise.all([
-          fetch(`/api/exam-sets/${examSetId}`),
-          fetch(`/api/exam-sets/${examSetId}/questions?page=1&pageSize=100`)
-        ]);
-
-        const examSetPayload = await examSetRes.json() as ApiSuccess<ExamSet> | { error?: { message: string } };
-        if (!examSetRes.ok || !("success" in examSetPayload)) {
-          throw new Error("Không thể tải thông tin đề thi.");
-        }
-        setExamSet(examSetPayload.data);
-
-        const questionsPayload = await questionsRes.json() as ApiSuccess<Question[]> | { error?: { message: string } };
-        if (!questionsRes.ok || !("success" in questionsPayload)) {
-          throw new Error("Không thể tải danh sách câu hỏi.");
-        }
-        setQuestions(questionsPayload.data.filter(q => q.status !== "archived"));
-      } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : "Có lỗi xảy ra.");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    void loadData();
+    loadData();
   }, [examSetId]);
+
+  async function loadData() {
+    setIsLoading(true);
+    try {
+      const [examSetRes, questionsRes] = await Promise.all([
+        fetch(`/api/exam-sets/${examSetId}`),
+        fetch(`/api/exam-sets/${examSetId}/questions?page=1&pageSize=100`)
+      ]);
+
+      const examSetPayload = await examSetRes.json() as ApiSuccess<ExamSet> | { error?: { message: string } };
+      if (!examSetRes.ok || !("success" in examSetPayload)) {
+        throw new Error("Không thể tải thông tin đề thi.");
+      }
+      setExamSet(examSetPayload.data);
+
+      const questionsPayload = await questionsRes.json() as ApiSuccess<Question[]> | { error?: { message: string } };
+      if (!questionsRes.ok || !("success" in questionsPayload)) {
+        throw new Error("Không thể tải danh sách câu hỏi.");
+      }
+      setQuestions(questionsPayload.data.filter(q => q.status !== "archived"));
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Có lỗi xảy ra.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function reloadExamSet() {
+    try {
+      const res = await fetch(`/api/exam-sets/${examSetId}`);
+      if (res.ok) {
+        const payload = await res.json() as ApiSuccess<ExamSet>;
+        setExamSet(payload.data);
+      }
+    } catch (err) {}
+  }
 
   function openCreateModal() {
     setEditingQuestion(null);
@@ -110,7 +146,7 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
       const response = await fetch(`/api/questions/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Không thể xóa câu hỏi.");
       setQuestions(prev => prev.filter(q => q._id !== id));
-      if (examSet) setExamSet({ ...examSet, questionCount: examSet.questionCount - 1 });
+      await reloadExamSet();
     } catch (error) {
       alert("Xóa thất bại");
     }
@@ -119,6 +155,10 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
   async function handleSaveQuestion(e: FormEvent) {
     e.preventDefault();
     if (!examSet) return;
+    if (qOptions.length < 2) {
+      alert("Cần ít nhất 2 đáp án.");
+      return;
+    }
     if (qOptions.filter(o => o.isCorrect).length !== 1) {
       alert("Vui lòng chọn ĐÚNG MỘT đáp án đúng.");
       return;
@@ -162,7 +202,7 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
         const payload = await res.json() as ApiSuccess<Question>;
         if (!res.ok || !("success" in payload)) throw new Error("Tạo mới thất bại");
         setQuestions(prev => [payload.data, ...prev]);
-        setExamSet({ ...examSet, questionCount: examSet.questionCount + 1 });
+        await reloadExamSet();
       }
       setIsEditing(false);
     } catch (error) {
@@ -170,6 +210,106 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Handle JSON Import
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) setImportJson(ev.target.result as string);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  async function validateImport() {
+    if (!examSet) return;
+    if (!importJson.trim()) {
+      alert("Vui lòng nhập JSON.");
+      return;
+    }
+
+    setIsValidating(true);
+    setImportResult(null);
+
+    try {
+      const parsed = JSON.parse(importJson);
+      if (!Array.isArray(parsed)) throw new Error("JSON phải là một mảng (array).");
+      
+      const adapted = parsed.map(item => {
+        if (!item.question || !Array.isArray(item.options) || typeof item.correctAnswer !== 'number') {
+          throw new Error("Dữ liệu không đúng định dạng yêu cầu (thiếu question, options hoặc correctAnswer).");
+        }
+        return {
+          type: "single_choice",
+          content: { original: item.question },
+          explanation: item.explanation ? { original: item.explanation } : undefined,
+          options: item.options.map((optStr: string, index: number) => ({
+            label: String.fromCharCode(65 + index),
+            content: { original: optStr },
+            isCorrect: index === item.correctAnswer
+          }))
+        };
+      });
+
+      const res = await fetch("/api/questions/import/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subjectId: examSet.subjectId,
+          targetExamSetIds: [examSetId],
+          inputFormat: "json",
+          content: JSON.stringify(adapted),
+          options: { duplicatePolicy: "allow", defaultStatus: "published" }
+        })
+      });
+
+      const payload = await res.json() as ApiSuccess<ImportValidationResult> | { error?: { message: string } };
+      if (!res.ok || !("success" in payload)) {
+        throw new Error("error" in payload ? payload.error?.message : "Lỗi kiểm tra dữ liệu.");
+      }
+      setImportResult(payload.data);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Có lỗi xảy ra khi kiểm tra JSON.");
+    } finally {
+      setIsValidating(false);
+    }
+  }
+
+  async function confirmImport() {
+    if (!importResult) return;
+    setIsConfirming(true);
+    try {
+      const res = await fetch(`/api/questions/import/${importResult.jobId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmToken: importResult.confirmToken })
+      });
+      if (!res.ok) throw new Error("Nhập dữ liệu thất bại.");
+      
+      alert(`Đã nhập thành công ${importResult.summary.validItems} câu hỏi!`);
+      setIsImporting(false);
+      setImportJson("");
+      setImportResult(null);
+      await loadData(); // Reload everything
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Có lỗi xảy ra khi xác nhận nhập.");
+    } finally {
+      setIsConfirming(false);
+    }
+  }
+
+  async function cancelImport() {
+    if (importResult?.jobId) {
+      try {
+        await fetch(`/api/questions/import/${importResult.jobId}/cancel`, { method: "POST" });
+      } catch (e) {}
+    }
+    setIsImporting(false);
+    setImportJson("");
+    setImportResult(null);
   }
 
   return (
@@ -181,7 +321,10 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
             <h1>{examSet?.title || "Quản lý câu hỏi"}</h1>
             <p className="page-description">Quản lý các câu hỏi thuộc đề thi này.</p>
           </div>
-          <button className="add-button" onClick={openCreateModal}>+ Thêm câu hỏi</button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="row-menu" style={{ padding: '8px 16px', background: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => setIsImporting(true)}>Nhập câu hỏi JSON</button>
+            <button className="add-button" onClick={openCreateModal}>+ Thêm câu hỏi</button>
+          </div>
         </section>
 
         {errorMessage && <p className="api-error" style={{ margin: "20px 48px" }}>{errorMessage}</p>}
@@ -232,6 +375,7 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
         </section>
       </main>
 
+      {/* Editor Modal */}
       {isEditing && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setIsEditing(false)}>
           <form className="modal-card" onSubmit={handleSaveQuestion} style={{ width: '600px', maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -289,7 +433,19 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
                     }} 
                     required 
                   />
-                  <button type="button" onClick={() => setQOptions(qOptions.filter((_, idx) => idx !== i))} style={{ padding: '8px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'red' }}>×</button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      if (qOptions.length <= 2) {
+                        alert("Một câu hỏi phải có ít nhất 2 đáp án.");
+                        return;
+                      }
+                      setQOptions(qOptions.filter((_, idx) => idx !== i));
+                    }} 
+                    style={{ padding: '8px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'red' }}
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
               <button 
@@ -316,6 +472,69 @@ export default function ExamSetQuestionsPage({ params }: { params: Promise<{ id:
               <button type="submit" className="add-button" disabled={isSaving}>Lưu câu hỏi</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Import JSON Modal */}
+      {isImporting && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal-card" style={{ width: '700px', maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-heading">
+              <div>
+                <p className="eyebrow">Hàng loạt</p>
+                <h2>Nhập câu hỏi JSON</h2>
+              </div>
+              <button type="button" className="close-button" onClick={cancelImport}>×</button>
+            </div>
+
+            {!importResult ? (
+              <>
+                <p style={{ marginBottom: '12px', fontSize: '0.9rem' }}>
+                  Dán nội dung JSON vào ô dưới hoặc <button type="button" onClick={() => fileInputRef.current?.click()} style={{ background: 'transparent', border: 'none', color: 'var(--blue-600)', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>chọn file .json từ máy</button>.
+                  <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} />
+                </p>
+                <textarea
+                  rows={10}
+                  value={importJson}
+                  onChange={(e) => setImportJson(e.target.value)}
+                  placeholder={`[\n  {\n    "question": "Nội dung",\n    "options": ["A", "B", "C", "D"],\n    "correctAnswer": 1,\n    "explanation": "..."\n  }\n]`}
+                  style={{ width: '100%', fontFamily: 'monospace', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-color)', marginBottom: '16px' }}
+                />
+                <div className="modal-actions">
+                  <button type="button" className="cancel-button" onClick={cancelImport}>{LABELS.CANCEL}</button>
+                  <button type="button" className="add-button" onClick={validateImport} disabled={isValidating}>Kiểm tra dữ liệu</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--surface-color)', borderRadius: '8px' }}>
+                  <h3 style={{ margin: '0 0 12px 0' }}>Kết quả kiểm tra</h3>
+                  <p>Hợp lệ: <strong>{importResult.summary.validItems}</strong> / {importResult.summary.totalItems}</p>
+                  <p style={{ color: 'red' }}>Không hợp lệ: <strong>{importResult.summary.invalidItems}</strong></p>
+                </div>
+                
+                {importResult.items.some(item => item.status === "invalid") && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <strong style={{ display: 'block', marginBottom: '8px' }}>Các câu hỏi lỗi:</strong>
+                    <ul style={{ paddingLeft: '20px', color: 'red', fontSize: '0.9rem' }}>
+                      {importResult.items.filter(item => item.status === "invalid").map((item) => (
+                        <li key={item.itemIndex}>
+                          Câu {item.itemIndex + 1}: {item.issues.map(i => i.message).join(", ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="modal-actions">
+                  <button type="button" className="cancel-button" onClick={() => setImportResult(null)}>Sửa lại JSON</button>
+                  <button type="button" className="add-button" onClick={confirmImport} disabled={isConfirming || !importResult.summary.canConfirm}>
+                    Xác nhận nhập ({importResult.summary.validItems} câu)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </SidebarLayout>
