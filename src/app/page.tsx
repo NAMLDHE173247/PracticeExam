@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { LABELS } from "@/lib/constants/labels";
 
@@ -53,7 +54,8 @@ function accentFromSubjectCode(code: string) {
   return accentOptions[hash % accentOptions.length];
 }
 
-export default function Home() {
+export default function Dashboard() {
+  const router = useRouter();
   const [examSets, setExamSets] = useState<ExamSet[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("ALL");
@@ -234,6 +236,30 @@ export default function Home() {
     }
   }
 
+  async function startExam(examSetId: string) {
+    try {
+      let currentUserId = window.localStorage.getItem("practice_exam_temporary_user_id");
+      if (!currentUserId || !/^[a-f\d]{24}$/i.test(currentUserId)) {
+        currentUserId = "65abcdef1234567890abcdef";
+        window.localStorage.setItem("practice_exam_temporary_user_id", currentUserId);
+      }
+      const res = await fetch("/api/exam-attempts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "exam_set",
+          userId: currentUserId,
+          examSetId: examSetId
+        })
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error?.message || "Tạo attempt thất bại");
+      router.push("/exam/" + payload.data.attempt._id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Có lỗi xảy ra");
+    }
+  }
+
   async function removeExamSet(id: string) {
     if (!window.confirm("Bạn có chắc chắn muốn xóa đề thi này không?")) return;
     try {
@@ -350,6 +376,9 @@ export default function Home() {
                         <td className="updated-at">{new Date(examSet.updatedAt).toLocaleDateString()}</td>
                         <td>
                           <div style={{ display: 'flex', gap: '8px' }}>
+                            {examSet.questionCount > 0 && examSet.status === "published" && (
+                              <button className="row-menu" style={{ color: 'var(--blue-600)', fontWeight: 600 }} type="button" onClick={() => startExam(examSet._id)}>Bắt đầu thi</button>
+                            )}
                             <button className="row-menu" type="button" onClick={() => openEditModal(examSet)} aria-label={`Edit ${examSet.title}`}>Sửa</button>
                             <button className="row-menu" type="button" onClick={() => removeExamSet(examSet._id)} aria-label={`Delete ${examSet.title}`}>Xóa</button>
                           </div>
