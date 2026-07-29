@@ -5,6 +5,16 @@ import type { LegacyQuestionSetDocument } from "@/modules/exam-sets/exam-set.typ
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const accentOptions = ["blue", "green", "orange", "violet"];
+
+function accentFromSubjectCode(code: string) {
+  const hash = [...code].reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0
+  );
+  return accentOptions[hash % accentOptions.length];
+}
+
 function serializeExamSet(examSet: LegacyQuestionSetDocument) {
   const updatedAt = examSet.updatedAt instanceof Date ? examSet.updatedAt.toISOString() : examSet.updatedAt ?? "";
   return {
@@ -32,16 +42,25 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { subject?: unknown; title?: unknown; questions?: unknown };
-    const allowedSubjects = new Set(["ENW492c", "WDU203c", "PRN232"]);
-    const subject = typeof body.subject === "string" ? body.subject : "";
+    const subject = typeof body.subject === "string" ? body.subject.trim().toUpperCase() : "";
     const title = typeof body.title === "string" ? body.title.trim() : "";
     const questions = typeof body.questions === "number" ? body.questions : Number(body.questions);
 
-    if (!allowedSubjects.has(subject) || !title || !Number.isInteger(questions) || questions < 1) {
+    if (!subject || !title || !Number.isInteger(questions) || questions < 1) {
       return Response.json({ error: "Dữ liệu question set không hợp lệ." }, { status: 400 });
     }
 
-    const accent = subject === "ENW492c" ? "blue" : subject === "WDU203c" ? "green" : "orange";
+    const subjectsCollection = await getCollection("subjects");
+    const existingSubject = await subjectsCollection.findOne({
+      code: subject,
+      isActive: true
+    });
+
+    if (!existingSubject) {
+      return Response.json({ error: "Môn học không tồn tại hoặc đã bị vô hiệu hóa." }, { status: 400 });
+    }
+
+    const accent = accentFromSubjectCode(subject);
     const document: Omit<LegacyQuestionSetDocument, "_id"> = {
       subject,
       title,
