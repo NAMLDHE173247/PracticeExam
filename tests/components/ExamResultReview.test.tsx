@@ -1,22 +1,34 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ExamResultReview } from "@/components/exam-results/ExamResultReview";
 import type { SerializedExamResult } from "@/lib/api/exam-result-client";
+
+import * as useTemporaryUserHook from "@/hooks/use-temporary-user";
 
 // Mock router
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() })
 }));
 
+vi.mock("@/hooks/use-temporary-user", () => ({
+  useTemporaryUser: vi.fn()
+}));
+
 describe("ExamResultReview", () => {
   const mockResult: SerializedExamResult = {
-    id: "attempt1",
+    attemptId: "attempt1",
+    mode: "exam_set",
+    subjectId: "subj1",
+    sourceExamSetIds: ["set1"],
     status: "submitted",
     submittedAt: "2026-07-28T12:00:00Z",
+    startedAt: "2026-07-28T11:00:00Z",
+    durationSeconds: 3600,
+    generatedAt: "2026-07-28T12:00:05Z",
     submitReason: "manual",
-    summary: { score: 5, scoreScale: 10 },
-    settings: { showTranslation: true },
+    summary: { score: 5, scoreScale: 10, correctCount: 1, partiallyCorrectCount: 0, incorrectCount: 1, unansweredCount: 0, totalQuestions: 2 },
+    settings: { showTranslation: true, shuffleQuestions: false, shuffleOptions: false, scoringMode: "strict" },
     questions: [
       {
         questionId: "q1",
@@ -38,6 +50,18 @@ describe("ExamResultReview", () => {
       }
     ]
   };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useTemporaryUserHook.useTemporaryUser).mockReturnValue({
+      isValid: true,
+      userId: "u1",
+      inputValue: "u1",
+      setInputValue: vi.fn(),
+      stored: true,
+      saveUserId: vi.fn(),
+    });
+  });
 
   it("renders summary statistics", () => {
     render(<ExamResultReview result={mockResult} />);

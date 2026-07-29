@@ -25,11 +25,11 @@ export function ImportEditor(props: Props) {
   return (
     <section className="import-editor-card">
       <div className="import-section-heading">
-        <div><p className="eyebrow">Step 2</p><h2>Input data</h2></div>
+        <div><p className="eyebrow">Bước 2</p><h2>Dữ liệu đầu vào</h2></div>
         <div className="editor-actions">
-          <button type="button" className="text-button" onClick={props.insertSample}>Insert {formatName} sample</button>
-          <button type="button" className="text-button" onClick={() => void props.copySample(sample)}>Copy sample</button>
-          <button type="button" className="text-button" onClick={props.clearContent}>Clear</button>
+          <button type="button" className="text-button" onClick={props.insertSample}>Chèn mẫu {formatName}</button>
+          <button type="button" className="text-button" onClick={() => void props.copySample(sample)}>Sao chép mẫu</button>
+          <button type="button" className="text-button" onClick={props.clearContent}>Xóa trắng</button>
           <span className="copy-result" aria-live="polite">{props.copyMessage}</span>
         </div>
       </div>
@@ -40,23 +40,23 @@ export function ImportEditor(props: Props) {
             value={props.content}
             disabled={props.isConfirming}
             onChange={(event) => props.setContent(event.target.value)}
-            placeholder={props.format === "json" ? "Paste a JSON array or { questions: [] } here..." : "Paste [QUESTION] blocks here..."}
+            placeholder={props.format === "json" ? "Dán mảng JSON hoặc { questions: [] } vào đây..." : "Dán các khối [QUESTION] vào đây..."}
           />
           <div className={`editor-meta ${props.overLimit ? "over-limit" : ""}`}>
-            <span>{props.utf8Bytes.toLocaleString()} bytes UTF-8 · {props.content.length.toLocaleString()} characters</span>
-            <span>Maximum 5 MB</span>
+            <span>{props.utf8Bytes.toLocaleString()} bytes UTF-8 · {props.content.length.toLocaleString()} ký tự</span>
+            <span>Tối đa 5 MB</span>
           </div>
-          {props.overLimit && <p className="field-error" role="alert">Content exceeds the 5 MB limit. Reduce the content before validating.</p>}
+          {props.overLimit && <p className="field-error" role="alert">Nội dung vượt quá giới hạn 5 MB. Vui lòng giảm bớt trước khi xác thực.</p>}
         </div>
         <aside className="format-help">
-          <h3>{formatName} format</h3>
+          <h3>Định dạng {formatName}</h3>
           <pre>{sample}</pre>
-          {props.format === "structured_text" && <p>Use 2–8 options. Multiple choice needs at least 2, but not all, correct answers. True/false accepts TRUE, FALSE, ĐÚNG, SAI, T or F.</p>}
+          {props.format === "structured_text" && <p>Sử dụng 2-8 lựa chọn. Câu hỏi nhiều lựa chọn cần ít nhất 2 đáp án đúng, nhưng không phải tất cả. Đúng/sai chấp nhận TRUE, FALSE, ĐÚNG, SAI, T hoặc F.</p>}
         </aside>
       </div>
       <div className="import-actions">
         <button className="add-button" type="button" disabled={props.isValidating || props.isConfirming || props.overLimit || !props.content.trim()} onClick={props.validate}>
-          {props.isValidating ? "Validating…" : "Validate and preview"}
+          {props.isValidating ? "Đang xác thực..." : "Xác thực và xem trước"}
         </button>
       </div>
     </section>

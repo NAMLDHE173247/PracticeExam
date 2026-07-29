@@ -27,7 +27,7 @@ export default function ResultsPage() {
         if (reason instanceof ApiClientError) {
           setError({ message: reason.message, code: reason.code });
         } else {
-          setError({ message: reason instanceof Error ? reason.message : "Unable to load result." });
+          setError({ message: reason instanceof Error ? reason.message : "Không thể tải kết quả." });
         }
       });
       
@@ -37,14 +37,14 @@ export default function ResultsPage() {
   if (!identity.isValid) {
     return (
       <main className="exam-message">
-        <h1>Temporary identity required</h1>
-        <Link className="primary-exam-button" href="/exam/setup">Go to exam setup</Link>
+        <h1>Yêu cầu danh tính tạm thời</h1>
+        <Link className="primary-exam-button" href="/">Về trang chủ</Link>
       </main>
     );
   }
 
   if (error) {
-    let actionBtn = <button className="primary-exam-button" onClick={() => router.push("/exam/setup")}>Choose another exam</button>;
+    let actionBtn = <button className="primary-exam-button" onClick={() => router.push("/")}>Chọn đề thi khác</button>;
     
     if (error.code === "RESULT_NOT_READY") {
       actionBtn = <button className="primary-exam-button" onClick={() => window.location.reload()}>Thử lại</button>;

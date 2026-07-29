@@ -7,15 +7,15 @@ export function ImportResult({ job, startNewImport }: Props) {
   return (
     <section className="import-result" role="status">
       <div>
-        <p className="eyebrow">Step 4</p>
-        <h2>Import completed</h2>
-        <p>{job.summary.importedItems ?? 0} questions were imported successfully.</p>
+        <p className="eyebrow">Bước 4</p>
+        <h2>Tải lên hoàn tất</h2>
+        <p>{job.summary.importedItems ?? 0} câu hỏi đã được tải lên thành công.</p>
       </div>
       <div className="result-actions">
-        <Link className="cancel-button" href="/#question-sets">Back to question bank</Link>
-        <button className="add-button" type="button" onClick={startNewImport}>Start new import</button>
+        <Link className="cancel-button" href="/#question-sets">Quay lại danh sách câu hỏi</Link>
+        <button className="add-button" type="button" onClick={startNewImport}>Bắt đầu tải lên mới</button>
       </div>
-      {job.createdQuestionIds && <p className="result-ids">Created question IDs: {job.createdQuestionIds.join(", ")}</p>}
+      {job.createdQuestionIds && <p className="result-ids">Mã câu hỏi đã tạo: {job.createdQuestionIds.join(", ")}</p>}
     </section>
   );
 }

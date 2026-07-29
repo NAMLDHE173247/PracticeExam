@@ -28,20 +28,24 @@ describe("ResultsPage", () => {
     vi.mocked(useTemporaryUserHook.useTemporaryUser).mockReturnValue({
       isValid: false,
       userId: "",
-      name: "",
-      email: ""
+      inputValue: "",
+      setInputValue: vi.fn(),
+      stored: false,
+      saveUserId: vi.fn(),
     });
     
     render(<ResultsPage />);
-    expect(screen.getByText("Temporary identity required")).toBeInTheDocument();
+    expect(screen.getByText("Yêu cầu danh tính tạm thời")).toBeInTheDocument();
   });
 
   it("fetches and renders result successfully", async () => {
     vi.mocked(useTemporaryUserHook.useTemporaryUser).mockReturnValue({
       isValid: true,
       userId: "u1",
-      name: "Test",
-      email: ""
+      inputValue: "u1",
+      setInputValue: vi.fn(),
+      stored: true,
+      saveUserId: vi.fn(),
     });
 
     const mockResult = {
@@ -66,8 +70,10 @@ describe("ResultsPage", () => {
     vi.mocked(useTemporaryUserHook.useTemporaryUser).mockReturnValue({
       isValid: true,
       userId: "u1",
-      name: "Test",
-      email: ""
+      inputValue: "u1",
+      setInputValue: vi.fn(),
+      stored: true,
+      saveUserId: vi.fn(),
     });
 
     const err = new ApiClientError("RESULT_NOT_READY", "Not ready yet", undefined, 409);
@@ -87,8 +93,10 @@ describe("ResultsPage", () => {
     vi.mocked(useTemporaryUserHook.useTemporaryUser).mockReturnValue({
       isValid: true,
       userId: "u1",
-      name: "Test",
-      email: ""
+      inputValue: "u1",
+      setInputValue: vi.fn(),
+      stored: true,
+      saveUserId: vi.fn(),
     });
 
     const err = new ApiClientError("ATTEMPT_NOT_FOUND", "Attempt not found", undefined, 404);
@@ -100,6 +108,6 @@ describe("ResultsPage", () => {
       expect(screen.getByText("Attempt not found")).toBeInTheDocument();
     });
     
-    expect(screen.getByRole("button", { name: "Choose another exam" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chọn đề thi khác" })).toBeInTheDocument();
   });
 });
