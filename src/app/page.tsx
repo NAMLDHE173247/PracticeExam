@@ -324,9 +324,10 @@ export default function Dashboard() {
                   type="button"
                   className="add-subject-button"
                   onClick={() => setIsAddingSubject(true)}
-                  aria-label="Add subject"
+                  aria-label="Thêm môn học"
                 >
-                  +
+                  <span aria-hidden="true">+</span>
+                  <span>Thêm môn học</span>
                 </button>
               </div>
               <div className="subject-list">

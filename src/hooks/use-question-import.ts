@@ -24,6 +24,7 @@ import {
 
 export const JOB_STORAGE_KEY = "practice-exam:question-import-job";
 const POLL_INTERVAL_MS = 1500;
+export type { ExamSet };
 type ErrorState = { message: string; code?: string; details?: unknown; issues?: PreviewIssue[] } | null;
 
 export function useQuestionImport() {
@@ -242,6 +243,6 @@ export function useQuestionImport() {
     isValidating, isConfirming, isCancelling, loadError, actionError, restoreMessage,
     copyMessage, setSubject, setExamSetIds, changeFormat, setContent, setDuplicatePolicy,
     setDefaultStatus, setDefaultDifficulty, setDefaultTranslationStatus, setFilter,
-    validate, confirm, cancel, refreshJob, copySample, startNewImport,
+    validate, confirm, cancel, refreshJob, copySample, startNewImport, setExamSets,
   };
 }

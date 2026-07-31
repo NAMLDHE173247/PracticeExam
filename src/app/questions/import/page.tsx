@@ -20,7 +20,7 @@ export default function ImportQuestionsPage() {
     actionError, restoreMessage, copyMessage, setSubject, setExamSetIds, changeFormat, setContent,
     setDuplicatePolicy, setDefaultStatus, setDefaultDifficulty,
     setDefaultTranslationStatus, setFilter, validate, confirm, cancel,
-    refreshJob, copySample, startNewImport,
+    refreshJob, copySample, startNewImport, setExamSets,
   } = useQuestionImport();
   const error = actionError ?? loadError;
   const errorSummaryRef = useRef<HTMLElement>(null);
@@ -36,7 +36,7 @@ export default function ImportQuestionsPage() {
     <ol className="import-steps" aria-label="Import progress"><li className="active"><span>1</span>Configure</li><li className={job ? "active" : ""}><span>2</span>Preview</li><li className={job?.status === "completed" ? "active" : ""}><span>3</span>Result</li></ol>
     {restoreMessage && <p className="import-restore-note" role="status">{restoreMessage}</p>}
     {error && <section className="import-alert" role="alert" tabIndex={-1} ref={errorSummaryRef}><strong>{error.code ?? "IMPORT_ERROR"}</strong><span>{error.message}</span>{error.issues?.map((issue, index) => <span key={`${issue.code}-${index}`}>Question {issue.itemIndex !== undefined ? issue.itemIndex + 1 : "-"} · {issue.field ?? "general"} · {issue.code}: {issue.message}</span>)}</section>}
-    <ImportConfiguration subjects={subjects} examSets={examSets} subjectId={subjectId} examSetIds={examSetIds} format={format} duplicatePolicy={duplicatePolicy} defaultStatus={defaultStatus} defaultDifficulty={defaultDifficulty} defaultTranslationStatus={defaultTranslationStatus} isLoadingSubjects={isLoadingSubjects} isLoadingExamSets={isLoadingExamSets} isConfirming={isConfirming} setSubject={setSubject} setExamSetIds={setExamSetIds} setFormat={changeFormat} setDuplicatePolicy={setDuplicatePolicy} setDefaultStatus={setDefaultStatus} setDefaultDifficulty={setDefaultDifficulty} setDefaultTranslationStatus={setDefaultTranslationStatus} />
+    <ImportConfiguration subjects={subjects} examSets={examSets} setExamSets={setExamSets} subjectId={subjectId} examSetIds={examSetIds} format={format} duplicatePolicy={duplicatePolicy} defaultStatus={defaultStatus} defaultDifficulty={defaultDifficulty} defaultTranslationStatus={defaultTranslationStatus} isLoadingSubjects={isLoadingSubjects} isLoadingExamSets={isLoadingExamSets} isConfirming={isConfirming} setSubject={setSubject} setExamSetIds={setExamSetIds} setFormat={changeFormat} setDuplicatePolicy={setDuplicatePolicy} setDefaultStatus={setDefaultStatus} setDefaultDifficulty={setDefaultDifficulty} setDefaultTranslationStatus={setDefaultTranslationStatus} />
     <ImportEditor format={format} content={content} utf8Bytes={utf8Bytes} overLimit={overLimit} isConfirming={isConfirming} isValidating={isValidating} copyMessage={copyMessage} setFormat={changeFormat} setContent={setContent} validate={() => void validate()} copySample={copySample} insertSample={insertSample} clearContent={clearContent} jsonSample={jsonSample} structuredSample={structuredSample} />
     {job && <ImportPreview job={job} focusKey={previewFocusKey} items={filteredItems} filter={filter} isStale={isStale} isConfirming={isConfirming} isCancelling={isCancelling} setFilter={setFilter} confirm={() => void confirm()} cancel={() => void cancel()} refresh={() => void refreshJob()} />}
     {job?.status === "completed" && !isStale && <ImportResult job={job} startNewImport={startNewImport} />}
